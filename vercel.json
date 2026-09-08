@@ -22,13 +22,5 @@
       "src": "/(.*)",
       "dest": "/public/$1"
     }
-  ],
-
-  "env": {
-    "DATABASE_URL": "@supabase_pooler_url",
-    "JWT_SECRET": "@jwt_secret",
-    "GEMINI_KEY": "@gemini_key",
-    "PAYMENT_WEBHOOK_SECRET": "@payment_webhook_secret",
-    "ADMIN_WA": "@admin_wa"
-  }
+  ]
 }
