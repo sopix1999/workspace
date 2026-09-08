@@ -23,12 +23,7 @@
       "dest": "/public/$1"
     }
   ],
-  "crons": [
-    {
-      "path": "/api/cron/cbt-cleanup",
-      "schedule": "*/5 * * * *"
-    }
-  ],
+
   "env": {
     "DATABASE_URL": "@supabase_pooler_url",
     "JWT_SECRET": "@jwt_secret",
