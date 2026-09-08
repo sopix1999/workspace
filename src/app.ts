@@ -57,6 +57,21 @@ app.use('*', async (c, next) => {
 // & /api/plans harus menang atas `app.all('/api/:action')` di routes.
 registerRegisterAndPay(app);
 
+// ---- Test endpoint ----
+app.get('/api', async (c) => {
+  const action = c.req.query('action');
+  if (action === 'test') {
+    try {
+      const { getPool } = await import('./lib/db');
+      await getPool().query('SELECT 1');
+      return c.json({ success: true, data: { db: 'ok' } });
+    } catch (e) {
+      return c.json({ success: false, error: String(e instanceof Error ? e.message : e) }, 500);
+    }
+  }
+  return c.json({ error: 'Not found' }, 404);
+});
+
 // ---- API REST ----
 await registerRoutes(app);
 
