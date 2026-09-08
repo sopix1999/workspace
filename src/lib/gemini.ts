@@ -5,7 +5,7 @@
 // Dipanggil dari routes /__gas (bridge) atau route AI.
 // ============================================================
 
-const GEMINI_MODEL_DEFAULT = 'gemini-1.5-flash-latest';
+const GEMINI_MODEL_DEFAULT = 'gemini-3.5-flash';
 
 export interface GeminiCtx {
   env: { GEMINI_KEY?: string; GEMINI_MODEL?: string };

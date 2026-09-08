@@ -1,0 +1,662 @@
+-- ==== agenda (nama tabel sesuai 0003; 0004 lama keliru pakai agenda_mengajar) ====
+CREATE TABLE `agenda_new` (
+`id` integer PRIMARY KEY AUTOINCREMENT
+
+,  `nip` varchar(100) DEFAULT NULL
+,  `tanggal` date DEFAULT NULL
+,  `kelas` varchar(50) DEFAULT NULL
+,  `mapel` varchar(150) DEFAULT NULL
+,  `target` text DEFAULT NULL
+,  `materi` varchar(255) DEFAULT NULL
+,  `deadline` date DEFAULT NULL
+,  `status` varchar(20) DEFAULT NULL
+);
+INSERT INTO `agenda_new` (`id`, `nip`, `tanggal`, `kelas`, `mapel`, `target`, `materi`, `deadline`, `status`) SELECT `id`, `nip`, `tanggal`, `kelas`, `mapel`, `target`, `materi`, `deadline`, `status` FROM `agenda`;
+DROP TABLE `agenda`;
+ALTER TABLE `agenda_new` RENAME TO `agenda`;
+
+-- ==== bahan_praktik ====
+CREATE TABLE `bahan_praktik_new` (
+`id` integer PRIMARY KEY AUTOINCREMENT
+
+,  `kode` varchar(50) DEFAULT NULL
+,  `nama_bahan` varchar(150) DEFAULT NULL
+,  `satuan` varchar(50) DEFAULT NULL
+,  `stok` decimal(10,2) DEFAULT NULL
+,  `stok_min` decimal(10,2) DEFAULT NULL
+,  `kategori` varchar(100) DEFAULT NULL
+);
+INSERT INTO `bahan_praktik_new` (`id`, `kode`, `nama_bahan`, `satuan`, `stok`, `stok_min`, `kategori`) SELECT `id`, `kode`, `nama_bahan`, `satuan`, `stok`, `stok_min`, `kategori` FROM `bahan_praktik`;
+DROP TABLE `bahan_praktik`;
+ALTER TABLE `bahan_praktik_new` RENAME TO `bahan_praktik`;
+
+-- ==== bank_soal ====
+CREATE TABLE `bank_soal_new` (
+`id` integer PRIMARY KEY AUTOINCREMENT
+
+,  `nip` varchar(100) NOT NULL
+,  `mapel` varchar(150) DEFAULT NULL
+,  `kelas` varchar(50) DEFAULT ''
+,  `jenis` integer DEFAULT 1
+,  `soal` text DEFAULT NULL
+,  `opsi` text DEFAULT NULL
+,  `kunci` text DEFAULT NULL
+,  `pembahasan` text DEFAULT NULL
+,  `bobot` integer DEFAULT 1
+,  `tanggal` date DEFAULT NULL
+);
+INSERT INTO `bank_soal_new` (`id`, `nip`, `mapel`, `kelas`, `jenis`, `soal`, `opsi`, `kunci`, `pembahasan`, `bobot`, `tanggal`) SELECT `id`, `nip`, `mapel`, `kelas`, `jenis`, `soal`, `opsi`, `kunci`, `pembahasan`, `bobot`, `tanggal` FROM `bank_soal`;
+DROP TABLE `bank_soal`;
+ALTER TABLE `bank_soal_new` RENAME TO `bank_soal`;
+
+-- ==== catatan_perilaku ====
+CREATE TABLE `catatan_perilaku_new` (
+`id` integer PRIMARY KEY AUTOINCREMENT
+
+,  `nip` varchar(100) DEFAULT NULL
+,  `kelas` varchar(50) DEFAULT NULL
+,  `nis` varchar(50) DEFAULT NULL
+,  `jenis` varchar(40) DEFAULT NULL
+,  `keterangan` text DEFAULT NULL
+,  `poin` integer DEFAULT NULL
+,  `tanggal` date DEFAULT NULL
+);
+INSERT INTO `catatan_perilaku_new` (`id`, `nip`, `kelas`, `nis`, `jenis`, `keterangan`, `poin`, `tanggal`) SELECT `id`, `nip`, `kelas`, `nis`, `jenis`, `keterangan`, `poin`, `tanggal` FROM `catatan_perilaku`;
+DROP TABLE `catatan_perilaku`;
+ALTER TABLE `catatan_perilaku_new` RENAME TO `catatan_perilaku`;
+
+-- ==== catatan_sikap ====
+CREATE TABLE `catatan_sikap_new` (
+`id` integer PRIMARY KEY AUTOINCREMENT
+
+,  `tanggal` date DEFAULT NULL
+,  `kelas` varchar(50) DEFAULT NULL
+,  `nis` varchar(50) DEFAULT NULL
+,  `jenis` varchar(30) DEFAULT NULL
+,  `keterangan` text DEFAULT NULL
+,  `poin` integer DEFAULT NULL
+,  `pencatat` varchar(100) DEFAULT NULL
+);
+INSERT INTO `catatan_sikap_new` (`id`, `tanggal`, `kelas`, `nis`, `jenis`, `keterangan`, `poin`, `pencatat`) SELECT `id`, `tanggal`, `kelas`, `nis`, `jenis`, `keterangan`, `poin`, `pencatat` FROM `catatan_sikap`;
+DROP TABLE `catatan_sikap`;
+ALTER TABLE `catatan_sikap_new` RENAME TO `catatan_sikap`;
+
+-- ==== cbt_exam ====
+CREATE TABLE `cbt_exam_new` (
+`id` integer PRIMARY KEY AUTOINCREMENT
+
+,  `nip` varchar(100) DEFAULT NULL
+,  `kelas` varchar(50) DEFAULT NULL
+,  `mapel` varchar(150) DEFAULT NULL
+,  `judul` varchar(255) DEFAULT NULL
+,  `durasi` integer DEFAULT NULL
+,  `token` varchar(20) DEFAULT NULL
+,  `acak_soal` integer DEFAULT 0
+,  `status` varchar(20) DEFAULT 'Aktif'
+,  `tanggal` date DEFAULT NULL
+);
+INSERT INTO `cbt_exam_new` (`id`, `nip`, `kelas`, `mapel`, `judul`, `durasi`, `token`, `acak_soal`, `status`, `tanggal`) SELECT `id`, `nip`, `kelas`, `mapel`, `judul`, `durasi`, `token`, `acak_soal`, `status`, `tanggal` FROM `cbt_exam`;
+DROP TABLE `cbt_exam`;
+ALTER TABLE `cbt_exam_new` RENAME TO `cbt_exam`;
+
+-- ==== cbt_hasil ====
+CREATE TABLE `cbt_hasil_new` (
+`id` integer PRIMARY KEY AUTOINCREMENT
+
+,  `exam_id` integer DEFAULT NULL
+,  `nis` varchar(50) DEFAULT NULL
+,  `nama` varchar(150) DEFAULT NULL
+,  `mulai` datetime DEFAULT NULL
+,  `selesai` datetime DEFAULT NULL
+,  `nilai_pg` decimal(6,2) DEFAULT NULL
+,  `nilai_essay` decimal(6,2) DEFAULT NULL
+,  `total` decimal(6,2) DEFAULT NULL
+,  `status` varchar(20) DEFAULT 'Berlangsung'
+);
+INSERT INTO `cbt_hasil_new` (`id`, `exam_id`, `nis`, `nama`, `mulai`, `selesai`, `nilai_pg`, `nilai_essay`, `total`, `status`) SELECT `id`, `exam_id`, `nis`, `nama`, `mulai`, `selesai`, `nilai_pg`, `nilai_essay`, `total`, `status` FROM `cbt_hasil`;
+DROP TABLE `cbt_hasil`;
+ALTER TABLE `cbt_hasil_new` RENAME TO `cbt_hasil`;
+
+-- ==== cbt_jawaban ====
+CREATE TABLE `cbt_jawaban_new` (
+`id` integer PRIMARY KEY AUTOINCREMENT
+
+,  `sesi_id` integer DEFAULT NULL
+,  `soal_id` integer DEFAULT NULL
+,  `jawaban` text DEFAULT NULL
+,  `benar` integer DEFAULT NULL
+,  `feedback` text DEFAULT NULL
+,  `sumber` varchar(10) NOT NULL DEFAULT 'manual'
+);
+INSERT INTO `cbt_jawaban_new` (`id`, `sesi_id`, `soal_id`, `jawaban`, `benar`, `feedback`, `sumber`) SELECT `id`, `sesi_id`, `soal_id`, `jawaban`, `benar`, `feedback`, `sumber` FROM `cbt_jawaban`;
+DROP TABLE `cbt_jawaban`;
+ALTER TABLE `cbt_jawaban_new` RENAME TO `cbt_jawaban`;
+
+-- ==== cbt_sesi ====
+CREATE TABLE `cbt_sesi_new` (
+`id` integer PRIMARY KEY AUTOINCREMENT
+
+,  `ujian_id` integer DEFAULT NULL
+,  `nis` varchar(50) DEFAULT NULL
+,  `nama` varchar(150) DEFAULT NULL
+,  `mulai` datetime DEFAULT NULL
+,  `deadline` datetime DEFAULT NULL
+,  `selesai` integer DEFAULT 0
+,  `skor` decimal(5,2) DEFAULT NULL
+,  `total_benar` integer DEFAULT 0
+,  `total_soal` integer DEFAULT 0
+,  `uraian_menunggu` integer DEFAULT 0
+);
+INSERT INTO `cbt_sesi_new` (`id`, `ujian_id`, `nis`, `nama`, `mulai`, `deadline`, `selesai`, `skor`, `total_benar`, `total_soal`, `uraian_menunggu`) SELECT `id`, `ujian_id`, `nis`, `nama`, `mulai`, `deadline`, `selesai`, `skor`, `total_benar`, `total_soal`, `uraian_menunggu` FROM `cbt_sesi`;
+DROP TABLE `cbt_sesi`;
+ALTER TABLE `cbt_sesi_new` RENAME TO `cbt_sesi`;
+
+-- ==== cbt_soal ====
+CREATE TABLE `cbt_soal_new` (
+`id` integer PRIMARY KEY AUTOINCREMENT
+
+,  `ujian_id` integer DEFAULT NULL
+,  `no_urut` integer DEFAULT NULL
+,  `jenis` integer DEFAULT NULL
+,  `soal` text DEFAULT NULL
+,  `opsi` text DEFAULT NULL
+,  `kunci` text DEFAULT NULL
+,  `pembahasan` text DEFAULT NULL
+,  `bobot` integer DEFAULT 1
+);
+INSERT INTO `cbt_soal_new` (`id`, `ujian_id`, `no_urut`, `jenis`, `soal`, `opsi`, `kunci`, `pembahasan`, `bobot`) SELECT `id`, `ujian_id`, `no_urut`, `jenis`, `soal`, `opsi`, `kunci`, `pembahasan`, `bobot` FROM `cbt_soal`;
+DROP TABLE `cbt_soal`;
+ALTER TABLE `cbt_soal_new` RENAME TO `cbt_soal`;
+
+-- ==== cbt_ujian ====
+CREATE TABLE `cbt_ujian_new` (
+`id` integer PRIMARY KEY AUTOINCREMENT
+
+,  `nip` varchar(100) DEFAULT NULL
+,  `judul` varchar(255) DEFAULT NULL
+,  `kelas` varchar(50) DEFAULT NULL
+,  `mapel` varchar(150) DEFAULT NULL
+,  `durasi_menit` integer DEFAULT 60
+,  `token` varchar(20) DEFAULT NULL
+,  `aktif` integer DEFAULT 1
+,  `ai_aktif` integer NOT NULL DEFAULT 0
+,  `tanggal` date DEFAULT NULL
+);
+INSERT INTO `cbt_ujian_new` (`id`, `nip`, `judul`, `kelas`, `mapel`, `durasi_menit`, `token`, `aktif`, `ai_aktif`, `tanggal`) SELECT `id`, `nip`, `judul`, `kelas`, `mapel`, `durasi_menit`, `token`, `aktif`, `ai_aktif`, `tanggal` FROM `cbt_ujian`;
+DROP TABLE `cbt_ujian`;
+ALTER TABLE `cbt_ujian_new` RENAME TO `cbt_ujian`;
+
+-- ==== dokumen ====
+CREATE TABLE `dokumen_new` (
+`id` integer PRIMARY KEY AUTOINCREMENT
+
+,  `nip` varchar(100) DEFAULT NULL
+,  `jenis` varchar(40) DEFAULT NULL
+,  `judul` varchar(255) DEFAULT NULL
+,  `url` text DEFAULT NULL
+,  `keterangan` text DEFAULT NULL
+);
+INSERT INTO `dokumen_new` (`id`, `nip`, `jenis`, `judul`, `url`, `keterangan`) SELECT `id`, `nip`, `jenis`, `judul`, `url`, `keterangan` FROM `dokumen`;
+DROP TABLE `dokumen`;
+ALTER TABLE `dokumen_new` RENAME TO `dokumen`;
+
+-- ==== guru ====
+CREATE TABLE `guru_new` (
+`id` integer PRIMARY KEY AUTOINCREMENT
+
+,  `nip` varchar(100) NOT NULL
+,  `nama_guru` varchar(150) DEFAULT NULL
+,  `mapel` varchar(150) DEFAULT NULL
+,  `kelas_diampu` text DEFAULT NULL
+);
+INSERT INTO `guru_new` (`id`, `nip`, `nama_guru`, `mapel`, `kelas_diampu`) SELECT `id`, `nip`, `nama_guru`, `mapel`, `kelas_diampu` FROM `guru`;
+DROP TABLE `guru`;
+ALTER TABLE `guru_new` RENAME TO `guru`;
+
+-- ==== inventaris ====
+CREATE TABLE `inventaris_new` (
+`id` integer PRIMARY KEY AUTOINCREMENT
+
+,  `kelas` varchar(50) DEFAULT NULL
+,  `nama_barang` varchar(150) DEFAULT NULL
+,  `jumlah` integer DEFAULT NULL
+,  `kondisi` varchar(50) DEFAULT NULL
+,  `keterangan` varchar(255) DEFAULT NULL
+,  `tanggal` date DEFAULT NULL
+);
+INSERT INTO `inventaris_new` (`id`, `kelas`, `nama_barang`, `jumlah`, `kondisi`, `keterangan`, `tanggal`) SELECT `id`, `kelas`, `nama_barang`, `jumlah`, `kondisi`, `keterangan`, `tanggal` FROM `inventaris`;
+DROP TABLE `inventaris`;
+ALTER TABLE `inventaris_new` RENAME TO `inventaris`;
+
+-- ==== jadwal_pelajaran ====
+CREATE TABLE `jadwal_pelajaran_new` (
+`id` integer PRIMARY KEY AUTOINCREMENT
+
+,  `kelas` varchar(50) DEFAULT NULL
+,  `hari` varchar(20) DEFAULT NULL
+,  `jam_ke` integer DEFAULT NULL
+,  `mata_pelajaran` varchar(150) DEFAULT NULL
+,  `nip` varchar(100) DEFAULT NULL
+);
+INSERT INTO `jadwal_pelajaran_new` (`id`, `kelas`, `hari`, `jam_ke`, `mata_pelajaran`, `nip`) SELECT `id`, `kelas`, `hari`, `jam_ke`, `mata_pelajaran`, `nip` FROM `jadwal_pelajaran`;
+DROP TABLE `jadwal_pelajaran`;
+ALTER TABLE `jadwal_pelajaran_new` RENAME TO `jadwal_pelajaran`;
+
+-- ==== jadwal_piket ====
+CREATE TABLE `jadwal_piket_new` (
+`id` integer PRIMARY KEY AUTOINCREMENT
+
+,  `kelas` varchar(50) DEFAULT NULL
+,  `hari` varchar(20) DEFAULT NULL
+,  `nis` varchar(50) DEFAULT NULL
+,  `nama_siswa` varchar(150) DEFAULT NULL
+);
+INSERT INTO `jadwal_piket_new` (`id`, `kelas`, `hari`, `nis`, `nama_siswa`) SELECT `id`, `kelas`, `hari`, `nis`, `nama_siswa` FROM `jadwal_piket`;
+DROP TABLE `jadwal_piket`;
+ALTER TABLE `jadwal_piket_new` RENAME TO `jadwal_piket`;
+
+-- ==== jurnal_bimbingan ====
+CREATE TABLE `jurnal_bimbingan_new` (
+`id` integer PRIMARY KEY AUTOINCREMENT
+
+,  `tanggal` date DEFAULT NULL
+,  `kelas` varchar(50) DEFAULT NULL
+,  `kategori` varchar(50) DEFAULT NULL
+,  `isi` text DEFAULT NULL
+,  `tindak_lanjut` varchar(255) DEFAULT NULL
+);
+INSERT INTO `jurnal_bimbingan_new` (`id`, `tanggal`, `kelas`, `kategori`, `isi`, `tindak_lanjut`) SELECT `id`, `tanggal`, `kelas`, `kategori`, `isi`, `tindak_lanjut` FROM `jurnal_bimbingan`;
+DROP TABLE `jurnal_bimbingan`;
+ALTER TABLE `jurnal_bimbingan_new` RENAME TO `jurnal_bimbingan`;
+
+-- ==== jurnal_mengajar ====
+CREATE TABLE `jurnal_mengajar_new` (
+`id` integer PRIMARY KEY AUTOINCREMENT
+
+,  `tanggal` date DEFAULT NULL
+,  `kelas` varchar(50) DEFAULT NULL
+,  `nip` varchar(100) DEFAULT NULL
+,  `mapel` varchar(150) DEFAULT NULL
+,  `jam_ke` integer DEFAULT NULL
+,  `materi` text DEFAULT NULL
+,  `kegiatan` varchar(255) DEFAULT NULL
+,  `tujuan` text DEFAULT NULL
+,  `model` varchar(100) DEFAULT NULL
+,  `metode` varchar(100) DEFAULT NULL
+,  `media` varchar(100) DEFAULT NULL
+,  `asesmen` varchar(100) DEFAULT NULL
+,  `refleksi` text DEFAULT NULL
+,  `hambatan` text DEFAULT NULL
+,  `solusi` text DEFAULT NULL
+,  `status` varchar(20) DEFAULT 'Selesai'
+);
+INSERT INTO `jurnal_mengajar_new` (`id`, `tanggal`, `kelas`, `nip`, `mapel`, `jam_ke`, `materi`, `kegiatan`, `tujuan`, `model`, `metode`, `media`, `asesmen`, `refleksi`, `hambatan`, `solusi`, `status`) SELECT `id`, `tanggal`, `kelas`, `nip`, `mapel`, `jam_ke`, `materi`, `kegiatan`, `tujuan`, `model`, `metode`, `media`, `asesmen`, `refleksi`, `hambatan`, `solusi`, `status` FROM `jurnal_mengajar`;
+DROP TABLE `jurnal_mengajar`;
+ALTER TABLE `jurnal_mengajar_new` RENAME TO `jurnal_mengajar`;
+
+-- ==== kalender_akademik ====
+CREATE TABLE `kalender_akademik_new` (
+`id` integer PRIMARY KEY AUTOINCREMENT
+
+,  `tanggal` date DEFAULT NULL
+,  `jenis` varchar(40) DEFAULT NULL
+,  `judul` varchar(255) DEFAULT NULL
+,  `keterangan` text DEFAULT NULL
+);
+INSERT INTO `kalender_akademik_new` (`id`, `tanggal`, `jenis`, `judul`, `keterangan`) SELECT `id`, `tanggal`, `jenis`, `judul`, `keterangan` FROM `kalender_akademik`;
+DROP TABLE `kalender_akademik`;
+ALTER TABLE `kalender_akademik_new` RENAME TO `kalender_akademik`;
+
+-- ==== kaskelas ====
+CREATE TABLE `kaskelas_new` (
+`id` integer PRIMARY KEY AUTOINCREMENT
+
+,  `tanggal` date DEFAULT NULL
+,  `kelas` varchar(50) DEFAULT NULL
+,  `jenis` varchar(20) DEFAULT NULL
+,  `jumlah` decimal(15,2) DEFAULT NULL
+,  `keterangan` varchar(255) DEFAULT NULL
+);
+INSERT INTO `kaskelas_new` (`id`, `tanggal`, `kelas`, `jenis`, `jumlah`, `keterangan`) SELECT `id`, `tanggal`, `kelas`, `jenis`, `jumlah`, `keterangan` FROM `kaskelas`;
+DROP TABLE `kaskelas`;
+ALTER TABLE `kaskelas_new` RENAME TO `kaskelas`;
+
+-- ==== katalog_alat ====
+CREATE TABLE `katalog_alat_new` (
+`id` integer PRIMARY KEY AUTOINCREMENT
+
+,  `kode` varchar(50) DEFAULT NULL
+,  `nama_barang` varchar(150) DEFAULT NULL
+,  `spesifikasi` varchar(255) DEFAULT NULL
+,  `jumlah` integer DEFAULT NULL
+,  `kondisi` varchar(50) DEFAULT NULL
+,  `lokasi` varchar(100) DEFAULT NULL
+);
+INSERT INTO `katalog_alat_new` (`id`, `kode`, `nama_barang`, `spesifikasi`, `jumlah`, `kondisi`, `lokasi`) SELECT `id`, `kode`, `nama_barang`, `spesifikasi`, `jumlah`, `kondisi`, `lokasi` FROM `katalog_alat`;
+DROP TABLE `katalog_alat`;
+ALTER TABLE `katalog_alat_new` RENAME TO `katalog_alat`;
+
+-- ==== kehadiran ====
+CREATE TABLE `kehadiran_new` (
+`id` integer PRIMARY KEY AUTOINCREMENT
+
+,  `tanggal` date DEFAULT NULL
+,  `nis` varchar(50) DEFAULT NULL
+,  `kelas` varchar(50) DEFAULT NULL
+,  `status` varchar(20) DEFAULT NULL
+,  `keterangan` varchar(255) DEFAULT NULL
+,  `terlambat` integer DEFAULT 0
+);
+INSERT INTO `kehadiran_new` (`id`, `tanggal`, `nis`, `kelas`, `status`, `keterangan`, `terlambat`) SELECT `id`, `tanggal`, `nis`, `kelas`, `status`, `keterangan`, `terlambat` FROM `kehadiran`;
+DROP TABLE `kehadiran`;
+ALTER TABLE `kehadiran_new` RENAME TO `kehadiran`;
+
+-- ==== kkm ====
+CREATE TABLE `kkm_new` (
+`id` integer PRIMARY KEY AUTOINCREMENT
+
+,  `nip` varchar(100) DEFAULT NULL
+,  `mapel` varchar(150) DEFAULT NULL
+,  `kelas` varchar(50) DEFAULT NULL
+,  `nilai_kkm` decimal(5,2) DEFAULT 75.00
+);
+INSERT INTO `kkm_new` (`id`, `nip`, `mapel`, `kelas`, `nilai_kkm`) SELECT `id`, `nip`, `mapel`, `kelas`, `nilai_kkm` FROM `kkm`;
+DROP TABLE `kkm`;
+ALTER TABLE `kkm_new` RENAME TO `kkm`;
+
+-- ==== kunjungan_rumah ====
+CREATE TABLE `kunjungan_rumah_new` (
+`id` integer PRIMARY KEY AUTOINCREMENT
+
+,  `tanggal` date DEFAULT NULL
+,  `nis` varchar(50) DEFAULT NULL
+,  `kelas` varchar(50) DEFAULT NULL
+,  `nama_siswa` varchar(150) DEFAULT NULL
+,  `alamat` varchar(255) DEFAULT NULL
+,  `hasil` text DEFAULT NULL
+,  `tindak_lanjut` varchar(255) DEFAULT NULL
+,  `petugas` varchar(150) DEFAULT NULL
+);
+INSERT INTO `kunjungan_rumah_new` (`id`, `tanggal`, `nis`, `kelas`, `nama_siswa`, `alamat`, `hasil`, `tindak_lanjut`, `petugas`) SELECT `id`, `tanggal`, `nis`, `kelas`, `nama_siswa`, `alamat`, `hasil`, `tindak_lanjut`, `petugas` FROM `kunjungan_rumah`;
+DROP TABLE `kunjungan_rumah`;
+ALTER TABLE `kunjungan_rumah_new` RENAME TO `kunjungan_rumah`;
+
+-- ==== laporan_kerusakan ====
+CREATE TABLE `laporan_kerusakan_new` (
+`id` integer PRIMARY KEY AUTOINCREMENT
+
+,  `tanggal` date DEFAULT NULL
+,  `kode_barang` varchar(50) DEFAULT NULL
+,  `nama_barang` varchar(150) DEFAULT NULL
+,  `kerusakan` text DEFAULT NULL
+,  `pelapor` varchar(150) DEFAULT NULL
+,  `status` varchar(50) DEFAULT NULL
+,  `jadwal_maintenance` date DEFAULT NULL
+);
+INSERT INTO `laporan_kerusakan_new` (`id`, `tanggal`, `kode_barang`, `nama_barang`, `kerusakan`, `pelapor`, `status`, `jadwal_maintenance`) SELECT `id`, `tanggal`, `kode_barang`, `nama_barang`, `kerusakan`, `pelapor`, `status`, `jadwal_maintenance` FROM `laporan_kerusakan`;
+DROP TABLE `laporan_kerusakan`;
+ALTER TABLE `laporan_kerusakan_new` RENAME TO `laporan_kerusakan`;
+
+-- ==== log_aktivitas ====
+CREATE TABLE `log_aktivitas_new` (
+`id` integer PRIMARY KEY AUTOINCREMENT
+
+,  `waktu` datetime DEFAULT NULL
+,  `username` varchar(100) DEFAULT NULL
+,  `role` varchar(50) DEFAULT NULL
+,  `aksi` varchar(100) DEFAULT NULL
+,  `detail` varchar(255) DEFAULT NULL
+);
+INSERT INTO `log_aktivitas_new` (`id`, `waktu`, `username`, `role`, `aksi`, `detail`) SELECT `id`, `waktu`, `username`, `role`, `aksi`, `detail` FROM `log_aktivitas`;
+DROP TABLE `log_aktivitas`;
+ALTER TABLE `log_aktivitas_new` RENAME TO `log_aktivitas`;
+
+-- ==== materi ====
+CREATE TABLE `materi_new` (
+`id` integer PRIMARY KEY AUTOINCREMENT
+
+,  `nip` varchar(100) DEFAULT NULL
+,  `kelas` varchar(50) DEFAULT NULL
+,  `mapel` varchar(150) DEFAULT NULL
+,  `bab` varchar(100) DEFAULT NULL
+,  `judul` varchar(255) DEFAULT NULL
+,  `jenis` varchar(40) DEFAULT NULL
+,  `url` text DEFAULT NULL
+,  `ket` text DEFAULT NULL
+);
+INSERT INTO `materi_new` (`id`, `nip`, `kelas`, `mapel`, `bab`, `judul`, `jenis`, `url`, `ket`) SELECT `id`, `nip`, `kelas`, `mapel`, `bab`, `judul`, `jenis`, `url`, `ket` FROM `materi`;
+DROP TABLE `materi`;
+ALTER TABLE `materi_new` RENAME TO `materi`;
+
+-- ==== modul_ajar ====
+CREATE TABLE `modul_ajar_new` (
+`id` integer PRIMARY KEY AUTOINCREMENT
+
+,  `nip` varchar(100) DEFAULT NULL
+,  `jenis` varchar(40) DEFAULT NULL
+,  `judul` varchar(255) DEFAULT NULL
+,  `url` text DEFAULT NULL
+,  `ket` text DEFAULT NULL
+);
+INSERT INTO `modul_ajar_new` (`id`, `nip`, `jenis`, `judul`, `url`, `ket`) SELECT `id`, `nip`, `jenis`, `judul`, `url`, `ket` FROM `modul_ajar`;
+DROP TABLE `modul_ajar`;
+ALTER TABLE `modul_ajar_new` RENAME TO `modul_ajar`;
+
+-- ==== nilai ====
+CREATE TABLE `nilai_new` (
+`id` integer PRIMARY KEY AUTOINCREMENT
+
+,  `nis` varchar(50) DEFAULT NULL
+,  `kelas` varchar(50) DEFAULT NULL
+,  `nip` varchar(100) DEFAULT NULL
+,  `mapel` varchar(150) DEFAULT NULL
+,  `jenis` varchar(20) DEFAULT NULL
+,  `nilai` decimal(5,2) DEFAULT NULL
+,  `tanggal` date DEFAULT NULL
+);
+INSERT INTO `nilai_new` (`id`, `nis`, `kelas`, `nip`, `mapel`, `jenis`, `nilai`, `tanggal`) SELECT `id`, `nis`, `kelas`, `nip`, `mapel`, `jenis`, `nilai`, `tanggal` FROM `nilai`;
+DROP TABLE `nilai`;
+ALTER TABLE `nilai_new` RENAME TO `nilai`;
+
+-- ==== peminjaman ====
+CREATE TABLE `peminjaman_new` (
+`id` integer PRIMARY KEY AUTOINCREMENT
+
+,  `id_pinjam` varchar(50) DEFAULT NULL
+,  `kode_barang` varchar(50) DEFAULT NULL
+,  `nama_barang` varchar(150) DEFAULT NULL
+,  `peminjam` varchar(150) DEFAULT NULL
+,  `jenis_peminjam` varchar(50) DEFAULT NULL
+,  `tgl_pinjam` date DEFAULT NULL
+,  `batas_waktu` date DEFAULT NULL
+,  `status` varchar(20) DEFAULT NULL
+,  `tgl_kembali` date DEFAULT NULL
+);
+INSERT INTO `peminjaman_new` (`id`, `id_pinjam`, `kode_barang`, `nama_barang`, `peminjam`, `jenis_peminjam`, `tgl_pinjam`, `batas_waktu`, `status`, `tgl_kembali`) SELECT `id`, `id_pinjam`, `kode_barang`, `nama_barang`, `peminjam`, `jenis_peminjam`, `tgl_pinjam`, `batas_waktu`, `status`, `tgl_kembali` FROM `peminjaman`;
+DROP TABLE `peminjaman`;
+ALTER TABLE `peminjaman_new` RENAME TO `peminjaman`;
+
+-- ==== pengumpulan ====
+CREATE TABLE `pengumpulan_new` (
+`id` integer PRIMARY KEY AUTOINCREMENT
+
+,  `tugas_id` integer DEFAULT NULL
+,  `nis` varchar(50) DEFAULT NULL
+,  `file_url` text DEFAULT NULL
+,  `teks` text DEFAULT NULL
+,  `nilai` decimal(5,2) DEFAULT NULL
+,  `feedback` text DEFAULT NULL
+,  `tgl_kumpul` date DEFAULT NULL
+);
+INSERT INTO `pengumpulan_new` (`id`, `tugas_id`, `nis`, `file_url`, `teks`, `nilai`, `feedback`, `tgl_kumpul`) SELECT `id`, `tugas_id`, `nis`, `file_url`, `teks`, `nilai`, `feedback`, `tgl_kumpul` FROM `pengumpulan`;
+DROP TABLE `pengumpulan`;
+ALTER TABLE `pengumpulan_new` RENAME TO `pengumpulan`;
+
+-- ==== pengumuman ====
+CREATE TABLE `pengumuman_new` (
+`id` integer PRIMARY KEY AUTOINCREMENT
+
+,  `kelas` varchar(50) DEFAULT NULL
+,  `judul` varchar(255) DEFAULT NULL
+,  `isi` text DEFAULT NULL
+,  `tanggal` date DEFAULT NULL
+,  `penulis` varchar(150) DEFAULT NULL
+);
+INSERT INTO `pengumuman_new` (`id`, `kelas`, `judul`, `isi`, `tanggal`, `penulis`) SELECT `id`, `kelas`, `judul`, `isi`, `tanggal`, `penulis` FROM `pengumuman`;
+DROP TABLE `pengumuman`;
+ALTER TABLE `pengumuman_new` RENAME TO `pengumuman`;
+
+-- ==== portofolio ====
+CREATE TABLE `portofolio_new` (
+`id` integer PRIMARY KEY AUTOINCREMENT
+
+,  `nis` varchar(50) DEFAULT NULL
+,  `nip` varchar(100) DEFAULT NULL
+,  `jenis` varchar(40) DEFAULT NULL
+,  `judul` varchar(255) DEFAULT NULL
+,  `url` text DEFAULT NULL
+,  `ket` text DEFAULT NULL
+,  `tanggal` date DEFAULT NULL
+);
+INSERT INTO `portofolio_new` (`id`, `nis`, `nip`, `jenis`, `judul`, `url`, `ket`, `tanggal`) SELECT `id`, `nis`, `nip`, `jenis`, `judul`, `url`, `ket`, `tanggal` FROM `portofolio`;
+DROP TABLE `portofolio`;
+ALTER TABLE `portofolio_new` RENAME TO `portofolio`;
+
+-- ==== presensi_guru ====
+CREATE TABLE `presensi_guru_new` (
+`id` integer PRIMARY KEY AUTOINCREMENT
+
+,  `nip` varchar(100) DEFAULT NULL
+,  `tanggal` date DEFAULT NULL
+,  `jam_masuk` varchar(10) DEFAULT NULL
+,  `jam_selesai` varchar(10) DEFAULT NULL
+,  `kelas` varchar(50) DEFAULT NULL
+,  `lokasi` varchar(255) DEFAULT NULL
+,  `foto` text DEFAULT NULL
+,  `status` varchar(20) DEFAULT NULL
+);
+INSERT INTO `presensi_guru_new` (`id`, `nip`, `tanggal`, `jam_masuk`, `jam_selesai`, `kelas`, `lokasi`, `foto`, `status`) SELECT `id`, `nip`, `tanggal`, `jam_masuk`, `jam_selesai`, `kelas`, `lokasi`, `foto`, `status` FROM `presensi_guru`;
+DROP TABLE `presensi_guru`;
+ALTER TABLE `presensi_guru_new` RENAME TO `presensi_guru`;
+
+-- ==== presensi_mapel ====
+CREATE TABLE `presensi_mapel_new` (
+`id` integer PRIMARY KEY AUTOINCREMENT
+
+,  `tanggal` date DEFAULT NULL
+,  `kelas` varchar(50) DEFAULT NULL
+,  `nis` varchar(50) DEFAULT NULL
+,  `nip` varchar(100) DEFAULT NULL
+,  `mapel` varchar(150) DEFAULT NULL
+,  `status` varchar(20) DEFAULT NULL
+,  `jam_ke` integer DEFAULT NULL
+,  `created_at` datetime DEFAULT NULL
+,  `updated_at` datetime DEFAULT NULL
+);
+INSERT INTO `presensi_mapel_new` (`id`, `tanggal`, `kelas`, `nis`, `nip`, `mapel`, `status`, `jam_ke`, `created_at`, `updated_at`) SELECT `id`, `tanggal`, `kelas`, `nis`, `nip`, `mapel`, `status`, `jam_ke`, `created_at`, `updated_at` FROM `presensi_mapel`;
+DROP TABLE `presensi_mapel`;
+ALTER TABLE `presensi_mapel_new` RENAME TO `presensi_mapel`;
+
+-- ==== rubrik ====
+CREATE TABLE `rubrik_new` (
+`id` integer PRIMARY KEY AUTOINCREMENT
+
+,  `nip` varchar(100) DEFAULT NULL
+,  `nama` varchar(150) DEFAULT NULL
+,  `komponen` text DEFAULT NULL
+);
+INSERT INTO `rubrik_new` (`id`, `nip`, `nama`, `komponen`) SELECT `id`, `nip`, `nama`, `komponen` FROM `rubrik`;
+DROP TABLE `rubrik`;
+ALTER TABLE `rubrik_new` RENAME TO `rubrik`;
+
+-- ==== settings ====
+CREATE TABLE `settings_new` (
+`id` integer PRIMARY KEY AUTOINCREMENT
+
+,  `setting_key` varchar(100) NOT NULL
+,  `setting_value` varchar(255) DEFAULT NULL
+);
+INSERT INTO `settings_new` (`id`, `setting_key`, `setting_value`) SELECT `id`, `setting_key`, `setting_value` FROM `settings`;
+DROP TABLE `settings`;
+ALTER TABLE `settings_new` RENAME TO `settings`;
+
+-- ==== siswa ====
+CREATE TABLE `siswa_new` (
+`id` integer PRIMARY KEY AUTOINCREMENT
+
+,  `nis` varchar(50) NOT NULL
+,  `nama_siswa` varchar(150) NOT NULL
+,  `kelas` varchar(50) DEFAULT NULL
+,  `jk` varchar(5) DEFAULT NULL
+,  `ttl` varchar(150) DEFAULT ''
+,  `alamat` varchar(255) DEFAULT ''
+,  `no_wa` varchar(30) DEFAULT ''
+,  `ekstra` varchar(255) DEFAULT ''
+,  `nama_ayah` varchar(150) DEFAULT ''
+,  `nama_ibu` varchar(150) DEFAULT ''
+,  `kerja_ayah` varchar(150) DEFAULT ''
+,  `kerja_ibu` varchar(150) DEFAULT ''
+,  `penghasilan_ortu` varchar(150) DEFAULT ''
+);
+INSERT INTO `siswa_new` (`id`, `nis`, `nama_siswa`, `kelas`, `jk`, `ttl`, `alamat`, `no_wa`, `ekstra`, `nama_ayah`, `nama_ibu`, `kerja_ayah`, `kerja_ibu`, `penghasilan_ortu`) SELECT `id`, `nis`, `nama_siswa`, `kelas`, `jk`, `ttl`, `alamat`, `no_wa`, `ekstra`, `nama_ayah`, `nama_ibu`, `kerja_ayah`, `kerja_ibu`, `penghasilan_ortu` FROM `siswa`;
+DROP TABLE `siswa`;
+ALTER TABLE `siswa_new` RENAME TO `siswa`;
+
+-- ==== struktur_kelas ====
+CREATE TABLE `struktur_kelas_new` (
+`id` integer PRIMARY KEY AUTOINCREMENT
+
+,  `kelas` varchar(50) DEFAULT NULL
+,  `jabatan` varchar(100) DEFAULT NULL
+,  `nis` varchar(50) DEFAULT NULL
+,  `nama_siswa` varchar(150) DEFAULT NULL
+);
+INSERT INTO `struktur_kelas_new` (`id`, `kelas`, `jabatan`, `nis`, `nama_siswa`) SELECT `id`, `kelas`, `jabatan`, `nis`, `nama_siswa` FROM `struktur_kelas`;
+DROP TABLE `struktur_kelas`;
+ALTER TABLE `struktur_kelas_new` RENAME TO `struktur_kelas`;
+
+-- ==== tatatertib ====
+CREATE TABLE `tatatertib_new` (
+`id` integer PRIMARY KEY AUTOINCREMENT
+
+,  `tanggal` date DEFAULT NULL
+,  `nis` varchar(50) DEFAULT NULL
+,  `pelanggaran` varchar(255) DEFAULT NULL
+,  `poin` integer DEFAULT NULL
+,  `kelas` varchar(50) DEFAULT NULL
+);
+INSERT INTO `tatatertib_new` (`id`, `tanggal`, `nis`, `pelanggaran`, `poin`, `kelas`) SELECT `id`, `tanggal`, `nis`, `pelanggaran`, `poin`, `kelas` FROM `tatatertib`;
+DROP TABLE `tatatertib`;
+ALTER TABLE `tatatertib_new` RENAME TO `tatatertib`;
+
+-- ==== tugas ====
+CREATE TABLE `tugas_new` (
+`id` integer PRIMARY KEY AUTOINCREMENT
+
+,  `nip` varchar(100) DEFAULT NULL
+,  `kelas` varchar(50) DEFAULT NULL
+,  `mapel` varchar(150) DEFAULT NULL
+,  `judul` varchar(255) DEFAULT NULL
+,  `deadline` date DEFAULT NULL
+,  `instruksi` text DEFAULT NULL
+,  `lampiran` text DEFAULT NULL
+,  `rubrik_id` integer DEFAULT NULL
+);
+INSERT INTO `tugas_new` (`id`, `nip`, `kelas`, `mapel`, `judul`, `deadline`, `instruksi`, `lampiran`, `rubrik_id`) SELECT `id`, `nip`, `kelas`, `mapel`, `judul`, `deadline`, `instruksi`, `lampiran`, `rubrik_id` FROM `tugas`;
+DROP TABLE `tugas`;
+ALTER TABLE `tugas_new` RENAME TO `tugas`;
+
+-- ==== users ====
+CREATE TABLE `users_new` (
+`id` integer PRIMARY KEY AUTOINCREMENT
+
+,  `username` varchar(100) NOT NULL
+,  `password` varchar(255) NOT NULL
+,  `role` varchar(50) NOT NULL
+,  `kelas` varchar(50) DEFAULT NULL
+,  `nama_lengkap` varchar(150) DEFAULT NULL
+,  `nip` varchar(100) DEFAULT NULL
+);
+INSERT INTO `users_new` (`id`, `username`, `password`, `role`, `kelas`, `nama_lengkap`, `nip`) SELECT `id`, `username`, `password`, `role`, `kelas`, `nama_lengkap`, `nip` FROM `users`;
+DROP TABLE `users`;
+ALTER TABLE `users_new` RENAME TO `users`;

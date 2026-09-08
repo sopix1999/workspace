@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KELAAS — Langganan & Trial Gratis 30 Hari</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>tailwind.config={theme:{extend:{colors:{brand:{50:'#eef2ff',100:'#e0e7ff',200:'#c7d2fe',300:'#a5b4fc',400:'#818cf8',500:'#6366f1',600:'#4f46e5',700:'#4338ca',800:'#3730a3',900:'#312e81'}}}}};</script>
+<style>
+html{scroll-behavior:smooth}
+.line-through{text-decoration-thickness:2px}
+@keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+.float{animation:float 3s ease-in-out infinite}
+</style>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans">
+
+<!-- ===================== NAV ===================== -->
+<nav class="bg-white/90 backdrop-blur border-b border-slate-200 sticky top-0 z-40">
+  <div class="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
+    <div class="flex items-center gap-2">
+      <div class="w-9 h-9 rounded-xl bg-brand-600 flex items-center justify-center rotate-3 shadow"><span class="text-white text-sm font-black">K</span></div>
+      <span class="font-black text-xl">KELAAS<span class="text-brand-600">.</span></span>
+    </div>
+    <div class="hidden md:flex items-center gap-6 text-sm font-medium text-slate-600">
+      <a href="#fitur" class="hover:text-brand-700">Fitur</a>
+      <a href="#harga" class="hover:text-brand-700">Harga</a>
+      <a href="#daftar" class="hover:text-brand-700">Daftar</a>
+    </div>
+    <div class="flex items-center gap-3">
+      <a href="/" class="text-sm font-semibold text-slate-600 hover:text-brand-700">Masuk</a>
+      <a href="#daftar" class="hidden sm:inline-block bg-brand-600 hover:bg-brand-700 text-white text-sm font-bold px-4 py-2 rounded-lg shadow">Coba Gratis</a>
+    </div>
+  </div>
+</nav>
+
+<!-- ===================== HERO ===================== -->
+<header class="bg-gradient-to-br from-brand-50 via-white to-brand-100">
+  <div class="max-w-6xl mx-auto px-4 py-16 md:py-24 grid md:grid-cols-2 gap-10 items-center">
+    <div>
+      <p class="inline-block bg-brand-100 text-brand-700 text-xs font-bold px-3 py-1 rounded-full mb-4">🎉 Trial Gratis 30 Hari — Tanpa Kartu Kredit</p>
+      <h1 class="text-4xl md:text-5xl font-black leading-tight text-brand-900">
+        Hemat Berjam-jam Waktu Rekap Nilai Anda. <span class="text-brand-600">Biarkan Sistem yang Bekerja.</span>
+      </h1>
+      <p class="mt-5 text-lg text-slate-600">
+        KELAAS mengotomatiskan rekap nilai, presensi, dan laporan wali kelas. Cukup isi data, sistem menyusun rekap & rapor untuk Anda.
+      </p>
+      <div class="mt-8 flex flex-col sm:flex-row gap-3">
+        <a href="#daftar" class="bg-brand-600 hover:bg-brand-700 text-white font-bold px-8 py-4 rounded-xl text-lg shadow-lg shadow-brand-200 text-center">Mulai Trial Gratis 30 Hari</a>
+        <a href="#fitur" class="border-2 border-brand-300 text-brand-700 hover:bg-brand-50 font-bold px-8 py-4 rounded-xl text-lg text-center">Lihat Fitur</a>
+      </div>
+      <p class="mt-4 text-sm text-slate-500">✔ 30 hari penuh gratis &nbsp;·&nbsp; ✔ Bisa lanjut jadi berbayar &nbsp;·&nbsp; ✔ Batal kapan saja</p>
+    </div>
+    <div class="hidden md:block">
+      <div class="bg-white rounded-3xl shadow-xl border border-brand-100 p-6 float">
+        <div class="flex items-center gap-2 mb-4">
+          <div class="w-3 h-3 rounded-full bg-red-400"></div><div class="w-3 h-3 rounded-full bg-yellow-400"></div><div class="w-3 h-3 rounded-full bg-green-400"></div>
+          <span class="text-xs text-slate-400 ml-2">kelaas.app — Rekap Nilai</span>
+        </div>
+        <div class="space-y-3 text-sm">
+          <div class="bg-slate-100 rounded-lg p-3 flex justify-between"><span class="text-slate-500">Kelas</span><b>7A</b></div>
+          <div class="bg-emerald-50 border border-emerald-200 rounded-lg p-3 flex justify-between"><span class="text-emerald-600">Rata-rata</span><b class="text-emerald-700">87,4</b></div>
+          <div class="bg-brand-50 border border-brand-200 rounded-lg p-3 flex justify-between"><span class="text-brand-600">Presensi</span><b class="text-brand-700">32/32 hadir</b></div>
+          <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 flex justify-between"><span class="text-amber-600">Nilai Rata</span><b class="text-amber-700">Rekap otomatis ✓</b></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- ===================== BENEFIT ===================== -->
+<section id="fitur" class="max-w-6xl mx-auto px-4 py-16">
+  <h2 class="text-center text-3xl font-black text-brand-900">Satu Platform untuk Semua Administrasi Guru</h2>
+  <p class="text-center text-slate-500 mt-2">Dirancang untuk wali kelas & guru mapel yang sibuk.</p>
+  <div class="grid md:grid-cols-3 gap-6 mt-10">
+    <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 text-center hover:shadow-lg transition">
+      <div class="w-14 h-14 mx-auto rounded-2xl bg-brand-100 text-brand-700 flex items-center justify-center text-2xl">🎯</div>
+      <h3 class="font-bold text-lg mt-4">Mudah Digunakan</h3>
+      <p class="text-sm text-slate-500 mt-2">Antarmuka sederhana, tanpa pelatihan. Isi nilai & presensi langsung dari HP.</p>
+    </div>
+    <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 text-center hover:shadow-lg transition">
+      <div class="w-14 h-14 mx-auto rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center text-2xl">⚡</div>
+      <h3 class="font-bold text-lg mt-4">Otomatisasi Nilai</h3>
+      <p class="text-sm text-slate-500 mt-2">Rekap nilai otomatis, hitung rata-rata, susun laporan wali kelas dalam hitungan detik.</p>
+    </div>
+    <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-200 text-center hover:shadow-lg transition">
+      <div class="w-14 h-14 mx-auto rounded-2xl bg-sky-100 text-sky-700 flex items-center justify-center text-2xl">📱</div>
+      <h3 class="font-bold text-lg mt-4">Multi-Device</h3>
+      <p class="text-sm text-slate-500 mt-2">Akses dari HP & laptop, kapan saja. Data tersinkron otomatis di cloud.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== PRICING ===================== -->
+<section id="harga" class="bg-white py-16">
+  <div class="max-w-3xl mx-auto px-4">
+    <h2 class="text-center text-3xl font-black text-brand-900">Satu Paket, Semua Fitur</h2>
+    <p class="text-center text-slate-500 mt-2">Cukup satu langganan — berlaku untuk Guru Mapel & Wali Kelas.</p>
+
+    <div class="rounded-3xl border-2 border-brand-600 bg-white p-8 flex flex-col relative shadow-xl shadow-brand-100 mt-12">
+      <span class="absolute -top-3 left-1/2 -translate-x-1/2 bg-brand-600 text-white text-xs font-black px-4 py-1 rounded-full">⭐ PAKET LENGKAP</span>
+      <h3 class="font-black text-xl text-brand-800 text-center">KELAAS <span class="text-brand-500">Premium</span></h3>
+      <p class="text-sm text-slate-500 mt-1 text-center">Akses penuh — Guru Mapel + Wali Kelas + CBT + AI.</p>
+      <div class="mt-6 text-center">
+        <span class="text-2xl text-slate-400 line-through font-semibold">Rp 249.000</span>
+        <div class="flex items-baseline justify-center gap-2">
+          <span class="text-5xl font-black text-brand-700">Rp 149.000</span>
+          <span class="text-slate-500 font-medium">/ Semester</span>
+        </div>
+      </div>
+      <ul class="mt-6 space-y-2 text-sm text-slate-600 mx-auto">
+        <li>✔ CBT anti-mencontek & monitor pelanggaran real-time</li>
+        <li>✔ Nilai, presensi, jurnal, tugas unlimited</li>
+        <li>✔ Laporan wali kelas & rekap otomatis</li>
+        <li>✔ Bank soal, koreksi essay AI</li>
+        <li>✔ Akses HP & laptop + dukungan WhatsApp</li>
+      </ul>
+      <a href="#daftar" class="mt-8 bg-brand-600 hover:bg-brand-700 text-white font-bold py-3.5 rounded-xl text-center shadow-lg">Mulai Trial Gratis 30 Hari</a>
+    </div>
+  </div>
+</section>
+
+<!-- ===================== FORM DAFTAR ===================== -->
+<section id="daftar" class="bg-gradient-to-b from-white to-brand-50 py-16">
+  <div class="max-w-xl mx-auto px-4">
+    <h2 class="text-center text-3xl font-black text-brand-900">Mulai Gratis Sekarang</h2>
+    <p class="text-center text-slate-500 mt-2">Trial 30 hari penuh. Transfer dulu? Tidak — coba dulu, bayar kalau suka.</p>
+
+    <!-- Pilihan paket (SATU paket saja) -->
+    <div class="bg-white rounded-3xl shadow-xl border border-brand-100 p-6 mb-6">
+      <div class="flex items-center justify-between gap-3">
+        <div>
+          <p class="text-xs font-bold text-brand-200 uppercase tracking-wide">Satu paket untuk semua fitur</p>
+          <p class="font-black text-xl text-slate-800 mt-0.5">KELAAS <span class="text-brand-600">Premium</span></p>
+          <p class="text-sm text-slate-500 mt-1">Akses penuh sebagai <b>Guru Mapel</b> & <b>Wali Kelas</b>.</p>
+        </div>
+        <div class="text-right shrink-0">
+          <p class="font-black text-3xl text-brand-700">Rp149.000</p>
+          <p class="text-xs text-slate-400">/ Semester</p>
+        </div>
+      </div>
+      <ul class="grid grid-cols-1 sm:grid-cols-2 gap-1.5 mt-4 text-sm text-slate-600">
+        <li>✔ CBT, nilai, presensi unlimited</li>
+        <li>✔ Wali kelas & guru mapel</li>
+        <li>✔ Rekap & laporan otomatis</li>
+        <li>✔ Dukungan via WhatsApp</li>
+      </ul>
+    </div>
+
+    <form id="regForm" class="bg-white rounded-3xl shadow-xl border border-brand-100 p-8 space-y-4">
+      <div>
+        <label class="text-sm font-semibold text-slate-700">Nama Lengkap</label>
+        <input id="fNama" required placeholder="Nama lengkap Anda"
+          class="mt-1 w-full border border-slate-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-brand-500">
+      </div>
+      <div>
+        <label class="text-sm font-semibold text-slate-700">Username</label>
+        <input id="fUsername" required placeholder="username untuk masuk"
+          class="mt-1 w-full border border-slate-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-brand-500">
+      </div>
+      <div>
+        <label class="text-sm font-semibold text-slate-700">Email</label>
+        <input id="fEmail" type="email" placeholder="email aktif (opsional)"
+          class="mt-1 w-full border border-slate-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-brand-500">
+      </div>
+      <div>
+        <label class="text-sm font-semibold text-slate-700">Kelas Wali Kelas <span class="text-xs font-normal text-slate-400">(opsional)</span></label>
+        <input id="fKelas" placeholder="cth: 7A" maxlength="20"
+          class="mt-1 w-full border border-slate-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-brand-500">
+        <p class="text-xs text-slate-400 mt-1">Diisi bila Anda wali kelas. Bisa diubah nanti dari aplikasi.</p>
+      </div>
+      <div>
+        <label class="text-sm font-semibold text-slate-700">Password</label>
+        <input id="fPass" type="password" required minlength="6" placeholder="minimal 6 karakter"
+          class="mt-1 w-full border border-slate-300 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-brand-500">
+      </div>
+
+      <button type="submit" id="submitBtn"
+        class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-black py-4 rounded-xl text-lg shadow-lg">
+        🚀 Mulai Trial Gratis 30 Hari
+      </button>
+      <p class="text-xs text-slate-400 text-center">Dengan mendaftar Anda setuju dengan Syarat & Ketentuan KELAAS.</p>
+    </form>
+
+    <!-- Instruksi konfirmasi -->
+    <div id="confirmationBox" class="hidden mt-6 bg-white rounded-3xl shadow-xl border border-emerald-200 p-8 text-center">
+      <div class="text-5xl mb-3">🎉</div>
+      <h3 class="text-2xl font-black text-emerald-700">Pendaftaran Berhasil!</h3>
+      <p class="mt-2 text-slate-600">Akun trial 30 hari Anda aktif. Silakan selesaikan pembayaran untuk lanjut ke paket premium:</p>
+      <div class="bg-slate-100 rounded-xl p-4 mt-4 text-left text-sm space-y-1">
+        <p><b>ID Pembayaran:</b> <span id="payId" class="font-mono text-brand-700">-</span></p>
+        <p><b>Nominal:</b> <span id="payAmount" class="font-bold">-</span></p>
+        <p><b>ID User:</b> <span id="payUid" class="font-mono">-</span></p>
+      </div>
+      <div id="qrisBox" class="mt-5 bg-white border-2 border-dashed border-emerald-300 rounded-2xl p-4">
+        <p class="text-sm font-bold text-slate-700 mb-2">💳 Bayar via QRIS</p>
+        <div class="bg-slate-100 rounded-xl flex items-center justify-center" style="aspect-ratio:1/1;max-width:220px;margin:0 auto">
+          <span class="text-slate-400 text-sm text-center px-4">QRIS<br>segera tersedia</span>
+        </div>
+        <p class="text-xs text-slate-500 mt-2 text-center">Scan QRIS sebesar nominal di atas (IDR) menggunakan m-Banking / e-Wallet apa pun.</p>
+      </div>
+      <ol class="text-left text-sm text-slate-600 mt-4 space-y-2 list-decimal pl-5">
+        <li>Bayar via <b>QRIS</b> dengan nominal di atas.</li>
+        <li>Kirim <b>bukti bayar</b> ke WhatsApp admin.</li>
+        <li>Akun diaktifkan <b>premium</b> dalam 1×24 jam.</li>
+      </ol>
+      <a id="waBtn" target="_blank" rel="noopener"
+        class="mt-5 inline-block bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-8 py-3.5 rounded-xl shadow">Konfirmasi & Kirim Bukti via WhatsApp →</a>
+      <p class="mt-4 text-sm text-slate-500">Sementara itu, Anda bisa langsung <a href="/" class="text-brand-600 font-semibold">masuk & coba fitur</a>.</p>
+    </div>
+
+    <div id="errorBox" class="hidden mt-4 bg-red-50 border border-red-200 text-red-700 text-sm font-medium rounded-xl p-4"></div>
+  </div>
+</section>
+
+<!-- ===================== FOOTER ===================== -->
+<footer class="bg-brand-900 text-brand-200 py-10 mt-4">
+  <div class="max-w-6xl mx-auto px-4 flex flex-col md:flex-row justify-between gap-6 text-sm">
+    <div>
+      <span class="font-black text-white text-lg">KELAAS<span class="text-brand-400">.</span></span>
+      <p class="mt-1 text-brand-300">Sistem Wali Kelas & Guru — digital, otomatis, efisien.</p>
+    </div>
+    <div class="text-right">
+      <p class="font-bold text-white mb-1">Kontak</p>
+      <p>WhatsApp Admin</p>
+      <p>disediakan saat konfirmasi pembayaran</p>
+    </div>
+  </div>
+</footer>
+
+<script>
+var PLAN_ID = 'kelaas';   // satu paket saja
+var PLAN_PRICE = 149000;
+
+document.getElementById('regForm').addEventListener('submit', function (e) {
+  e.preventDefault();
+  var err = document.getElementById('errorBox');
+  err.classList.add('hidden');
+
+  var payload = {
+    nama: document.getElementById('fNama').value.trim(),
+    username: document.getElementById('fUsername').value.trim(),
+    email: document.getElementById('fEmail').value.trim(),
+    password: document.getElementById('fPass').value,
+    kelas: document.getElementById('fKelas').value.trim(),
+    plan: PLAN_ID,
+    duration_days: 180, // semester
+  };
+  if (!payload.nama || !payload.username || !payload.password) {
+    err.textContent = 'Lengkapi Nama, Username, dan Password.';
+    err.classList.remove('hidden');
+    return;
+  }
+
+  var btn = document.getElementById('submitBtn');
+  btn.disabled = true;
+  btn.textContent = 'Memproses...';
+
+  fetch('/api/register-and-pay', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
+    .then(function (r) { return r.json(); })
+    .then(function (x) {
+      if (x.status !== 'success') {
+        throw new Error(x.message || 'Gagal mendaftar');
+      }
+      // tampilkan konfirmasi
+      document.getElementById('confirmationBox').classList.remove('hidden');
+      document.getElementById('payId').textContent = x.payment_id;
+      document.getElementById('payAmount').textContent = 'Rp ' + Number(x.amount || 0).toLocaleString('id-ID');
+      document.getElementById('payUid').textContent = x.unique_id || '-';
+      document.getElementById('waBtn').href = x.whatsapp_url || '#';
+      document.getElementById('regForm').classList.add('hidden');
+      document.getElementById('confirmationBox').scrollIntoView({ behavior: 'smooth' });
+    })
+    .catch(function (e) {
+      err.textContent = e.message;
+      err.classList.remove('hidden');
+    })
+    .finally(function () {
+      btn.disabled = false;
+      btn.textContent = '🚀 Mulai Trial Gratis 30 Hari';
+    });
+});
+</script>
+</body>
+</html>

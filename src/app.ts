@@ -7,11 +7,18 @@
 import { Hono } from 'hono';
 import { registerRoutes } from './api/routes';
 import { handleBridge } from './api-bridge';
+import { registerWebhooks } from './api/webhooks';
+import { registerRegisterAndPay } from './api/register';
+import { registerAdmin } from './api/admin';
+import { requireActiveSubscription, requireSuperAdmin, AppVariables } from './lib/subscription';
 
 export type Bindings = {
   DB: any;
   GEMINI_KEY?: string;
   GEMINI_MODEL?: string;
+  JWT_SECRET?: string;
+  PAYMENT_WEBHOOK_SECRET?: string;
+  ADMIN_WA?: string;
   ASSETS: any;
   self?: { fetch: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response> };
   __app?: any;
@@ -45,8 +52,31 @@ app.use('*', async (c, next) => {
   await next();
 });
 
+// ---- Registrasi + pembayaran manual (QRIS) ----
+// Daftar SEBELUM registerRoutes — route literal /api/register-and-pay
+// & /api/plans harus menang atas `app.all('/api/:action')` di routes.
+registerRegisterAndPay(app);
+
 // ---- API REST ----
 await registerRoutes(app);
+
+// ---- Sub-app protected: /api/app/* (wajib subscription aktif) ----
+const protectedApp = new Hono<{ Bindings: Bindings; Variables: AppVariables }>();
+protectedApp.use('*', requireActiveSubscription);
+protectedApp.get('/me', async (c) => {
+  const u = c.get('user') as Record<string, any>;
+  return c.json({ success: true, data: u, message: 'OK' });
+});
+app.route('/api/app', protectedApp);
+
+// ---- Admin sub-app: /api/admin/* (wajib Super Admin) ----
+const adminApp = new Hono<{ Bindings: Bindings; Variables: AppVariables }>();
+adminApp.use('*', requireSuperAdmin);
+registerAdmin(adminApp);
+app.route('/api/admin', adminApp);
+
+// ---- Webhook payment gateway ----
+registerWebhooks(app);
 
 // ---- Bridge GAS (emulasi google.script.run) ----
 app.post('/__gas', async (c) => handleBridge(c));
@@ -58,6 +88,12 @@ app.all('*', async (c) => {
     const url = new URL(c.req.url);
     if (url.pathname === '/' || url.pathname === '/index.html') {
       url.pathname = '/index.html';
+      const r = await env.ASSETS.fetch(url.toString(), c.req.raw);
+      if (r.ok) return new Response(r.body, r);
+    }
+    // Landing page langganan — serve langganan.html langsung.
+    if (url.pathname === '/langganan' || url.pathname === '/langganan.html') {
+      url.pathname = '/langganan.html';
       const r = await env.ASSETS.fetch(url.toString(), c.req.raw);
       if (r.ok) return new Response(r.body, r);
     }

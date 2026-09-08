@@ -2,24 +2,27 @@
   "name": "kelaas-cf",
   "version": "1.0.0",
   "private": true,
-  "description": "KELAAS — Sistem Wali Kelas (migrasi Google Apps Script + PHP → Cloudflare Workers / Hono / D1)",
+  "description": "KELAAS — Sistem Wali Kelas (migrasi Google Apps Script + PHP → Cloudflare Workers / Hono / D1) — now Vercel + Supabase",
   "scripts": {
-    "dev": "wrangler dev",
-    "build": "wrangler deploy --dry-run --outdir=dist",
-    "deploy": "wrangler deploy",
+    "dev": "vercel dev",
+    "build": "tsc && vercel build",
+    "start": "vercel start",
     "typecheck": "tsc --noEmit",
-    "db:migrate:local": "wrangler d1 migrations apply kelaas-db --local",
-    "db:migrate:remote": "wrangler d1 migrations apply kelaas-db --remote",
-    "db:seed": "wrangler d1 execute kelaas-db --local --file=migrations/seed.sql"
+    "deploy": "vercel deploy --prod"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
-    "hono": "^4.6.0"
+    "hono": "^4.6.0",
+    "pdf-lib": "^1.17.1"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20240925.0",
+    "@cloudflare/workers-types": "^5.20260804.1",
     "@types/bcryptjs": "^2.4.6",
+    "@types/node": "^20.19.43",
+    "@types/pg": "^8.23.1",
+    "pg": "^8.23.0",
     "typescript": "^5.6.0",
-    "wrangler": "^3.80.0"
+    "vercel": "^33.7.1",
+    "wrangler": "^4.120.0"
   }
 }

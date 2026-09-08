@@ -1,0 +1,39 @@
+{
+  "builds": [
+    {
+      "src": "api/**/*.ts",
+      "use": "@vercel/node"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/cron/(.*)",
+      "dest": "/api/cron/$1"
+    },
+    {
+      "src": "/__gas",
+      "dest": "/api/[[...path]]"
+    },
+    {
+      "src": "/api/(.*)",
+      "dest": "/api/[[...path]]"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/public/$1"
+    }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron/cbt-cleanup",
+      "schedule": "*/5 * * * *"
+    }
+  ],
+  "env": {
+    "DATABASE_URL": "@supabase_pooler_url",
+    "JWT_SECRET": "@jwt_secret",
+    "GEMINI_KEY": "@gemini_key",
+    "PAYMENT_WEBHOOK_SECRET": "@payment_webhook_secret",
+    "ADMIN_WA": "@admin_wa"
+  }
+}

@@ -1,21 +1,306 @@
 // ============================================================
 // Generator PDF — port dari code.gs (DocumentApp + DriveApp)
-// Pendekatan: bangun dokumen sebagai HTML ringkas, konversi
-// client-side ke PDF (html2pdf.js di browser), atau simpan
-// sebagai file .html yang bisa dikonversi pengguna.
-// Struktur (headers/tables/wali kelas) dipertahankan 1:1.
+// Pendekatan: buat PDF ASLI di server memakai pdf-lib (berjalan
+// di Cloudflare Workers). Hasil: file .pdf beneran dengan tabel
+// rapi + page-break otomatis — konsisten dengan tampilan cetak,
+// langsung didownload, tanpa ketergantungan browser.
 // ============================================================
+import { PDFDocument, StandardFonts, rgb, PDFFont, PDFPage } from 'pdf-lib';
 import { all } from './lib/db';
 import type { D1Database } from '@cloudflare/workers-types';
 import { fmtDateID, todayWIB } from './lib/crypto';
 
+// Ukuran A4 (pt) + margin
+const PAGE_W = 595.28;
+const PAGE_H = 841.89;
+const MARGIN = 36;
+const CW = PAGE_W - MARGIN * 2;
+
+const BLACK = rgb(0.1, 0.1, 0.1);
+const GRAY = rgb(0.38, 0.38, 0.38);
+const LGRAY = rgb(0.85, 0.85, 0.85);
+const WHITE = rgb(1, 1, 1);
+const ROW_ALT = rgb(0.97, 0.97, 0.97);
+
 function esc(v: unknown): string {
-  return String(v === null || v === undefined ? '' : v)
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  return String(v === null || v === undefined ? '' : v);
 }
 
 function fmtN(v: unknown): string {
   return v === '' || v === null || v === undefined ? '-' : String(v);
+}
+
+// Pecah teks menjadi baris-baris agar muat di maxWidth (wrap per kata,
+// dengan fallback per karakter untuk kata panjang supaya TIDAK pernah
+// meluber ke kolom sebelah / tertutup tabel).
+function wrapText(text: string, font: PDFFont, size: number, maxWidth: number): string[] {
+  const words = String(text).split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let cur = '';
+  const fits = (t: string) => font.widthOfTextAtSize(t, size) <= maxWidth;
+  // Kata tunggal lebih lebar dari kolom → pecah per karakter.
+  const pushChunks = (word: string): string => {
+    if (fits(word)) return word;
+    let chunk = '';
+    for (const ch of word) {
+      if (chunk && !fits(chunk + ch)) { lines.push(chunk); chunk = ch; }
+      else chunk += ch;
+    }
+    return chunk;
+  };
+  for (const w of words) {
+    const t = cur ? cur + ' ' + w : w;
+    if (!cur || fits(t)) {
+      cur = t;
+    } else {
+      if (cur) lines.push(cur);
+      cur = pushChunks(w);
+    }
+  }
+  if (cur) lines.push(cur);
+  return lines.length ? lines : [''];
+}
+
+function clamp(v: number, lo: number, hi: number): number {
+  return Math.max(lo, Math.min(v, hi));
+}
+
+// Lebar kolom cerdas: ukur isi (header + semua sel), beri prioritas kolom
+// 'Nama' (agar nama siswa utuh & terlihat), kolom angka/tanggal dibuat
+// ramping, lalu kecilkan/gembungkan hingga total selebar targetWidth.
+// Header tidak boleh terpotong: tiap kolom minimal selebar header-nya.
+// `natural=true` mengembalikan lebar alami (tanpa menyusut/menggembung),
+// dipakai untuk memutuskan orientasi halaman (potret/landscape).
+function computeColWidths(headers: string[], rows: (string | number)[][], font: PDFFont, size: number, targetWidth: number, natural = false): number[] {
+  const n = headers.length;
+  const isNo = (i: number) => headers[i] === 'No';
+  const isNama = (i: number) => headers[i] === 'Nama';
+  const isNis = (i: number) => headers[i] === 'NIS';
+  const isDate = (i: number) => /^(\d{1,2}[\/-]\d{1,2})$/.test(headers[i]);
+  const isLong = (i: number) => /^(Isi|Materi|Kegiatan|Keterangan)$/.test(headers[i]);
+  // Kolom tanggal ramping (header pendek "01-08"), kolom lain lebih lega.
+  const colPad = (i: number) => (isDate(i) ? 3 : 5);
+
+  const needed: number[] = [];
+  const headerW: number[] = [];
+  for (let i = 0; i < n; i++) {
+    const hw = font.widthOfTextAtSize(headers[i], size);
+    headerW[i] = Math.ceil(hw) + colPad(i) * 2;
+    let m = hw;
+    for (const r of rows) {
+      const t = fmtN(r?.[i]);
+      if (t) m = Math.max(m, font.widthOfTextAtSize(t, size));
+    }
+    needed[i] = Math.ceil(m) + colPad(i) * 2;
+  }
+
+  const widths: number[] = needed.map((w, i) => {
+    if (isNo(i)) return 26;
+    if (isNama(i)) return clamp(w, 90, 200);
+    if (isNis(i)) return clamp(w, 42, 60);
+    if (isDate(i)) return clamp(w, 24, 34);
+    if (isLong(i)) return clamp(w, 80, 320);
+    return clamp(w, 24, 44);
+  });
+
+  if (natural) return widths;
+
+  let sum = widths.reduce((a, b) => a + b, 0);
+
+  // Terlalu lebar → kecilkan kolom lain dulu; Nama paling terakhir.
+  let guard = 0;
+  while (sum > targetWidth && guard++ < 200) {
+    let best = -1;
+    let bestW = 0;
+    for (let i = 0; i < n; i++) {
+      if (isNo(i) || isNama(i)) continue;
+      const minW = Math.max(
+        isNis(i) ? 40 : isLong(i) ? 60 : isDate(i) ? 24 : 20,
+        headerW[i],
+      );
+      if (widths[i] > minW && widths[i] > bestW) { best = i; bestW = widths[i]; }
+    }
+    if (best < 0) {
+      for (let i = 0; i < n; i++) {
+        if (isNama(i) && widths[i] > 90) { best = i; break; }
+      }
+      if (best < 0) break;
+    }
+    widths[best] -= 2;
+    sum = widths.reduce((a, b) => a + b, 0);
+  }
+
+  // Jaga-jaga: bila masih kepanjangan (mis. jumlah tanggal sangat banyak),
+  // perkecil proporsional agar tabel tidak meluber keluar halaman.
+  if (sum > targetWidth) {
+    const factor = targetWidth / sum;
+    for (let i = 0; i < n; i++) {
+      if (!isNo(i)) widths[i] = Math.max(isDate(i) ? 14 : 16, Math.floor(widths[i] * factor));
+    }
+    sum = widths.reduce((a, b) => a + b, 0);
+  }
+
+  // Sisa ruang → bagikan agar tabel selebar area cetak.
+  // Nama dapat prioritas (agar nama siswa utuh), lalu kolom panjang, sisanya merata.
+  if (sum < targetWidth) {
+    let extra = Math.floor(targetWidth - sum);
+    for (let i = 0; i < n && extra > 0; i++) {
+      if (isNama(i)) {
+        const add = Math.min(extra, 120, Math.max(0, 240 - widths[i]));
+        if (add > 0) { widths[i] += add; extra -= add; }
+      }
+    }
+    const longIdx: number[] = [];
+    for (let i = 0; i < n; i++) if (isLong(i)) longIdx.push(i);
+    if (longIdx.length && extra > 0) {
+      const share = Math.min(120, Math.floor(extra / longIdx.length));
+      for (const i of longIdx) {
+        const add = Math.min(share, extra);
+        widths[i] += add;
+        extra -= add;
+      }
+    }
+    let k = 0;
+    let g2 = 0;
+    const added: number[] = new Array(n).fill(0);
+    while (extra > 0 && g2++ < 400) {
+      if (!isNo(k % n) && added[k % n] < 40) { widths[k % n]++; added[k % n]++; extra--; }
+      k++;
+    }
+  }
+  return widths;
+}
+
+// Gambar satu baris teks, kembalikan y baru (bergeser ke atas).
+function drawLine(
+  page: PDFPage,
+  text: string,
+  x: number,
+  y: number,
+  font: PDFFont,
+  size: number,
+  color = BLACK,
+): number {
+  page.drawText(text, { x, y, size, font, color });
+  return y - size * 1.45;
+}
+
+function drawLineCenter(
+  page: PDFPage,
+  text: string,
+  y: number,
+  font: PDFFont,
+  size: number,
+  color = BLACK,
+  pageW = PAGE_W,
+): number {
+  const w = font.widthOfTextAtSize(text, size);
+  page.drawText(text, { x: (pageW - w) / 2, y, size, font, color });
+  return y - size * 1.45;
+}
+
+interface TableOpts {
+  headers: string[];
+  rows: (string | number)[][];
+  font: PDFFont;
+  bold: PDFFont;
+  size: number;
+}
+
+// Apakah tabel perlu halaman landscape? Pakai lebar natural kolom
+// (tanpa dipaksa menyusut) sebagai perkiraan kebutuhan ruang sebenarnya.
+function tableNeedsLandscape(headers: string[], rows: (string | number)[][], font: PDFFont, size: number): boolean {
+  const widths = computeColWidths(headers, rows, font, size, 99999, true);
+  return widths.reduce((a, b) => a + b, 0) > CW;
+}
+
+// Gambar tabel dengan page-break otomatis (header terulang tiap halaman).
+// Ukuran halaman mengikuti `pageW`/`pageH` dari pemanggil (buildPdf sudah
+// memutuskan potret/landscape untuk seluruh dokumen).
+// Kembalikan { page, y } posisi terakhir.
+function drawTable(doc: PDFDocument, page: PDFPage, y: number, opts: TableOpts & { pageW: number; pageH: number; margin: number }): { page: PDFPage; y: number } {
+  const { headers, rows, font, bold, size, pageW, pageH, margin } = opts;
+  const n = headers.length;
+  const lineH = size * 1.45;
+  const padY = 5;
+  // Kolom tanggal (header pendek "01-08") butuh padding lebih ramping agar
+  // banyak kolom tanggal bisa muat; kolom lain lebih lega.
+  const isDateCol = (h: string) => /^(\d{1,2}[\/-]\d{1,2})$/.test(h);
+  const padX = (i: number) => (isDateCol(headers[i]) ? 3 : 5);
+
+  const cw = pageW - margin * 2;
+  const colW = computeColWidths(headers, rows, font, size, cw);
+  const tableW = colW.reduce((a, b) => a + b, 0);
+
+  // Pusatkan tabel bila masih ada sisa ruang di kanan.
+  const startX = margin + Math.max(0, (cw - tableW) / 2);
+
+  // Rata tengah untuk kolom yang isinya angka/tanggal (bukan teks nama).
+  const isCenter = (i: number): boolean => {
+    const h = headers[i];
+    if (h === 'Nama' || h === 'Isi' || h === 'Materi' || h === 'Kegiatan' || h === 'Keterangan' || h === 'Jam') return false;
+    return true;
+  };
+
+  // Gambar header tabel.
+  const drawHeader = (pg: PDFPage, yy: number): number => {
+    const hh = size * 1.45 + padY * 2;
+    let x = startX;
+    pg.drawRectangle({ x: startX, y: yy - hh, width: tableW, height: hh, color: LGRAY });
+    for (let i = 0; i < n; i++) {
+      const w = font.widthOfTextAtSize(headers[i], size);
+      const cx = isCenter(i) ? x + (colW[i] - w) / 2 : x + padX(i);
+      pg.drawText(headers[i], { x: cx, y: yy - size - padY + 1, size, font: bold });
+      x += colW[i];
+    }
+    return yy - hh;
+  };
+
+  y = drawHeader(page, y);
+
+  const flushRow = (pg: PDFPage, yy: number, ri: number): number => {
+    let x = startX;
+    for (let i = 0; i < n; i++) {
+      const cell = fmtN(rows[ri]?.[i]);
+      const lines = wrapText(cell, font, size, colW[i] - padX(i) * 2);
+      pg.drawRectangle({
+        x,
+        y: yy - rowH,
+        width: colW[i],
+        height: rowH,
+        color: ri % 2 === 1 ? ROW_ALT : WHITE,
+        borderColor: rgb(0.72, 0.72, 0.72),
+        borderWidth: 0.5,
+      });
+      let ly = yy - size - padY + 1;
+      for (const ln of lines) {
+        const w = font.widthOfTextAtSize(ln, size);
+        const cx = isCenter(i) ? x + (colW[i] - w) / 2 : x + padX(i);
+        pg.drawText(ln, { x: cx, y: ly, size, font });
+        ly -= lineH;
+      }
+      x += colW[i];
+    }
+    return yy - rowH;
+  };
+
+  let rowH = 0;
+  for (let ri = 0; ri < rows.length; ri++) {
+    let maxLines = 1;
+    for (let i = 0; i < n; i++) {
+      const cell = fmtN(rows[ri]?.[i]);
+      const lines = wrapText(cell, font, size, colW[i] - padX(i) * 2);
+      if (lines.length > maxLines) maxLines = lines.length;
+    }
+    rowH = maxLines * lineH + padY * 2;
+    if (y - rowH < margin) {
+      page = doc.addPage([pageW, pageH]);
+      y = pageH - margin;
+      y = drawHeader(page, y);
+    }
+    y = flushRow(page, y, ri);
+  }
+  return { page, y };
 }
 
 async function waliKelasNama(db: D1Database, kelas: string): Promise<string> {
@@ -45,63 +330,78 @@ interface PdfOpts {
   notes?: string[];
 }
 
-async function buildHtml(db: D1Database, opts: PdfOpts): Promise<string> {
+// Bangun dokumen PDF (layout kop + judul + sections + tabel + catatan).
+// Orientasi (potret/landscape) ditentukan dari lebar tabel terlebar di
+// sections — seluruh dokumen memakai orientasi yang sama agar kop/judul
+// dan tabel berada di halaman yang konsisten.
+async function buildPdf(db: D1Database, opts: PdfOpts): Promise<Uint8Array> {
   const ta = await getTA(db);
-  const widthClamp = (w: number) => Math.max(24, Math.min(w, 500));
-  let html = `<!DOCTYPE html><html lang="id"><head><meta charset="utf-8"><title>${esc(opts.title)}</title>`;
-  html += `<style>
-    *{box-sizing:border-box;margin:0;padding:0}
-    body{font-family:Arial,sans-serif;color:#111;font-size:10pt;padding:28px 30px}
-    .kop{text-align:center;margin-bottom:14px}
-    .kop .sekolah{font-weight:bold;font-size:11pt}
-    .kop .sub{font-size:8pt;color:#555;margin-top:2px}
-    h1{font-size:15pt;text-align:center;margin:14px 0 2px}
-    .cls{text-align:center;font-size:10pt;margin:2px 0}
-    .subtitle{text-align:center;font-size:10pt;font-style:italic;color:#333;margin-bottom:10px}
-    h2{font-size:11pt;margin:14px 0 6px}
-    table{border-collapse:collapse;width:100%;margin:6px 0}
-    th,td{border:1px solid #bbb;padding:3px 5px;font-size:8pt;text-align:left}
-    th{background:#eee;font-weight:bold}
-    tr:nth-child(even) td{background:#fafafa}
-    .note{font-size:8pt;font-style:italic;color:#555;margin-top:8px}
-    .space{height:10px}
-  </style></head><body>`;
-  html += `<div class="kop"><div class="sekolah">SEKOLAH MENENGAH — KELAAS</div><div class="sub">Laporan Akademik Siswa • Tahun Ajaran ${esc(ta.ta)} • Semester ${esc(ta.sem)}</div></div>`;
-  html += `<h1>${esc(opts.title)}</h1>`;
-  if (opts.kelas) html += `<div class="cls">Kelas: ${esc(opts.kelas)}</div>`;
-  if (opts.subtitle) html += `<div class="subtitle">${esc(opts.subtitle)}</div>`;
-  html += `<div class="space"></div>`;
+  const doc = await PDFDocument.create();
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+  const ital = await doc.embedFont(StandardFonts.HelveticaOblique);
+
+  // Deteksi kebutuhan landscape dari semua tabel di sections.
+  let landscape = false;
   for (const sec of opts.sections ?? []) {
-    html += `<h2>${esc(sec.heading)}</h2>`;
-    if (sec.note) {
-      html += `<div>${esc(sec.note)}</div><div class="space"></div>`;
-    }
-    if (sec.table) {
-      const headers = sec.table.headers;
-      const rows = sec.table.rows;
-      if (rows.length) {
-        html += `<table><thead><tr>${headers.map((h) => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>`;
-        for (const row of rows) {
-          html += `<tr>${headers.map((_, c) => `<td>${esc(fmtN(row[c]))}</td>`).join('')}</tr>`;
-        }
-        html += `</tbody></table>`;
-      } else {
-        html += `<div>Belum ada data.</div>`;
+    if (sec.table && (sec.table.rows || []).length) {
+      if (tableNeedsLandscape(sec.table.headers, sec.table.rows as (string | number)[][], font, 8)) {
+        landscape = true;
+        break;
       }
     }
   }
-  for (const n of opts.notes ?? []) {
-    html += `<div class="note">${esc(n)}</div>`;
+  const pageW = landscape ? PAGE_H : PAGE_W;
+  const pageH = landscape ? PAGE_W : PAGE_H;
+  const margin = MARGIN;
+
+  let page = doc.addPage([pageW, pageH]);
+  let y = pageH - margin;
+
+  // Kop sekolah
+  y = drawLineCenter(page, 'SEKOLAH MENENGAH — KELAAS', y, bold, 11, BLACK, pageW);
+  y = drawLineCenter(page, `Laporan Akademik Siswa • Tahun Ajaran ${esc(ta.ta)} • Semester ${esc(ta.sem)}`, y, font, 8, GRAY, pageW);
+  y -= 8;
+
+  // Judul
+  y = drawLineCenter(page, esc(opts.title), y, bold, 13, BLACK, pageW);
+  if (opts.kelas) y = drawLineCenter(page, 'Kelas: ' + esc(opts.kelas), y, font, 10, BLACK, pageW);
+  if (opts.subtitle) y = drawLineCenter(page, esc(opts.subtitle), y, ital, 9, GRAY, pageW);
+  y -= 10;
+
+  for (const sec of opts.sections ?? []) {
+    if (sec.heading) y = drawLine(page, esc(sec.heading), margin, y, bold, 11);
+    if (sec.note) {
+      y = drawLine(page, esc(sec.note), margin, y, font, 9, GRAY);
+      y -= 4;
+    }
+    if (sec.table) {
+      const rows = (sec.table.rows || []) as (string | number)[][];
+      if (rows.length) {
+        const res = drawTable(doc, page, y, { headers: sec.table.headers, rows, font, bold, size: 8, pageW, pageH, margin });
+        page = res.page;
+        y = res.y - 6;
+      } else {
+        y = drawLine(page, 'Belum ada data.', margin, y, font, 9, GRAY);
+        y -= 6;
+      }
+    }
+    y -= 4;
   }
-  html += `</body></html>`;
-  return html;
+
+  for (const n of opts.notes ?? []) {
+    y = drawLine(page, esc(n), margin, y, ital, 8, GRAY);
+    y -= 2;
+  }
+
+  return doc.save();
 }
 
-// Bungkus hasil HTML menjadi payload siap-download.
-function pdfPayload(html: string, filename: string): { success: boolean; base64: string; filename: string; mimeType: string; html: string } {
-  // base64 UTF-8-safe
-  const b64 = btoa(unescape(encodeURIComponent(html)));
-  return { success: true, base64: b64, filename: filename.replace(/\s+/g, '_') + '.html', mimeType: 'text/html', html };
+// Bungkus hasil PDF menjadi payload siap-download.
+function pdfPayload(bytes: Uint8Array, filename: string): { success: boolean; base64: string; filename: string; mimeType: string } {
+  let bin = '';
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return { success: true, base64: btoa(bin), filename: filename.replace(/\s+/g, '_') + '.pdf', mimeType: 'application/pdf' };
 }
 
 // ---------- 1) REKAP NILAI ----------
@@ -113,22 +413,22 @@ export async function generateRekapNilaiPDF(db: D1Database, nip: string, kelas: 
   for (const j of jenis) headers.push(j);
   headers.push('Akhir');
   const rows = students.map((x: any, i: number) => {
-    const row = [i + 1, x.nis, x.nama];
+    const row: (string | number)[] = [i + 1, x.nis, x.nama];
     for (const j of jenis) row.push(x[j] == null ? '-' : x[j]);
     row.push(x.akhir == null ? '-' : x.akhir);
     return row;
   });
-  const html = await buildHtml(db, {
+  const bytes = await buildPdf(db, {
     title: 'REKAP NILAI SISWA',
     subtitle: 'Mata Pelajaran: ' + (rekap?.mapel || mapel || '-'),
     kelas,
-    sections: [{ heading: '', table: { headers, rows } }],
+    sections: [{ table: { headers, rows } }],
     notes: [
       'Keterangan: NH = Nilai Harian, PSTS = Penilaian Sumatif Tengah Semester, PSAS = Penilaian Sumatif Akhir Semester.',
       'Wali Kelas: ' + (await waliKelasNama(db, kelas)),
     ],
   });
-  return pdfPayload(html, 'Rekap_Nilai_' + kelas);
+  return pdfPayload(bytes, 'Rekap_Nilai_' + kelas);
 }
 
 async function getRekapNilai(db: D1Database, nip: string, kelas: string, mapel: string): Promise<Record<string, any>> {
@@ -170,47 +470,47 @@ export async function generateRekapanKelasPDF(db: D1Database, kelas: string, sta
   const rows = students.map((x: any, i: number) => {
     const rec = x.records || {};
     const sum = x.summary || {};
-    const row = [i + 1, x.nis, x.nama];
+    const row: (string | number)[] = [i + 1, x.nis, x.nama];
     for (const d of dates) row.push(rec[d] || '-');
     row.push(sum.Hadir || 0, sum.Sakit || 0, sum.Izin || 0, sum.Alfa || 0, x.total || 0);
     return row;
   });
-  const html = await buildHtml(db, {
+  const bytes = await buildPdf(db, {
     title: 'REKAP KEHADIRAN KELAS',
     subtitle: label || 'Periode: ' + start + ' s/d ' + end,
     kelas,
-    sections: [{ heading: '', table: { headers, rows } }],
+    sections: [{ table: { headers, rows } }],
     notes: [
       'Keterangan: H = Hadir, S = Sakit, I = Izin, A = Alfa (tanpa keterangan).',
       'Wali Kelas: ' + (await waliKelasNama(db, kelas)),
     ],
   });
-  return pdfPayload(html, 'Rekap_Kehadiran_' + kelas);
+  return pdfPayload(bytes, 'Rekap_Kehadiran_' + kelas);
 }
 
 // ---------- 3) REKAP KEHADIRAN PER SISWA ----------
 export async function generateRekapanPDF(db: D1Database, kelas: string, nis: string, start: string, end: string, label: string): Promise<any> {
   const data = await getRekapData(db, kelas, nis, start, end);
   const s = (data.students || [])[0] || { nis, nama: nis, records: {}, summary: {}, total: 0 };
-  const rows = [
+  const rows: (string | number)[][] = [
     ['Hadir', s.summary?.Hadir || 0],
     ['Sakit', s.summary?.Sakit || 0],
     ['Izin', s.summary?.Izin || 0],
     ['Alfa', s.summary?.Alfa || 0],
     ['Total', s.total || 0],
   ];
-  const html = await buildHtml(db, {
+  const bytes = await buildPdf(db, {
     title: 'REKAP KEHADIRAN SISWA',
     subtitle: label || 'Periode: ' + start + ' s/d ' + end,
     kelas,
     sections: [
       { heading: 'Nama: ' + s.nama },
       { heading: 'NIS: ' + s.nis },
-      { heading: '', table: { headers: ['Keterangan', 'Jumlah'], rows } },
+      { table: { headers: ['Keterangan', 'Jumlah'], rows } },
     ],
     notes: ['Keterangan: H = Hadir, S = Sakit, I = Izin, A = Alfa.', 'Wali Kelas: ' + (await waliKelasNama(db, kelas))],
   });
-  return pdfPayload(html, 'Rekapan_' + nis);
+  return pdfPayload(bytes, 'Rekapan_' + nis);
 }
 
 // ---------- 4) REKAP PRESENSI MAPEL PER GURU ----------
@@ -224,22 +524,22 @@ export async function generateRekapMapelPDF(db: D1Database, nip: string, kelas: 
   const rows = students.map((x: any, i: number) => {
     const rec = x.records || {};
     const sm = x.summary || {};
-    const row = [i + 1, x.nis, x.nama];
+    const row: (string | number)[] = [i + 1, x.nis, x.nama];
     for (const d of dates) row.push(rec[d] || '-');
     row.push(sm.Hadir || 0, sm.Sakit || 0, sm.Izin || 0, sm.Alfa || 0, sm.Dispensasi || 0, x.total || 0);
     return row;
   });
-  const html = await buildHtml(db, {
+  const bytes = await buildPdf(db, {
     title: 'REKAP PRESENSI MAPEL',
     subtitle: label || 'Periode: ' + start + ' s/d ' + end,
     kelas,
     sections: [
       { heading: 'Mapel: ' + mapel },
-      { heading: '', table: { headers, rows } },
+      { table: { headers, rows } },
     ],
     notes: ['Keterangan: H = Hadir, S = Sakit, I = Izin, A = Alfa, D = Dispensasi.', 'Guru Mapel: ' + (guruNama || '-')],
   });
-  return pdfPayload(html, 'Rekap_Presensi_' + kelas + '_' + mapel);
+  return pdfPayload(bytes, 'Rekap_Presensi_' + kelas + '_' + mapel);
 }
 
 // ---------- 5) LAPORAN ADMINISTRASI GURU ----------
@@ -253,7 +553,7 @@ export async function generateLaporanAdminPDF(db: D1Database, nip: string, kelas
     return [i + 1, x.nis, x.nama, sm.Hadir || 0, sm.Sakit || 0, sm.Izin || 0, sm.Alfa || 0, sm.Dispensasi || 0, x.total || 0];
   });
   const jrows = jurnal.map((x: any, i: number) => [i + 1, fmtDateID(String(x.tanggal)), 'Jam ' + (x.jamKe || '-'), x.materi, x.kegiatan]);
-  const html = await buildHtml(db, {
+  const bytes = await buildPdf(db, {
     title: 'LAPORAN ADMINISTRASI PEMBELAJARAN',
     subtitle: 'Periode: ' + start + ' s/d ' + end,
     kelas,
@@ -264,7 +564,7 @@ export async function generateLaporanAdminPDF(db: D1Database, nip: string, kelas
     ],
     notes: ['Jumlah baris direvisi: ' + (d.revisiCount || 0)],
   });
-  return pdfPayload(html, 'Laporan_Administrasi_' + kelas + '_' + mapel);
+  return pdfPayload(bytes, 'Laporan_Administrasi_' + kelas + '_' + mapel);
 }
 
 // ---------- 6) REKAP LENGKAP ----------
@@ -281,7 +581,7 @@ export async function generateRekapLengkapPDF(db: D1Database, nip: string, kelas
   for (let j = 0; j < 8; j++) h1.push('NH' + (j + 1));
   h1.push('PSTS', 'PSAS', 'Akhir');
   const r1 = students.map((x: any, i: number) => {
-    const row = [i + 1, x.nis, x.nama];
+    const row: (string | number)[] = [i + 1, x.nis, x.nama];
     for (let k = 0; k < 8; k++) row.push(x['NH' + (k + 1)] == null ? '-' : x['NH' + (k + 1)]);
     row.push(x.PSTS == null ? '-' : x.PSTS, x.PSAS == null ? '-' : x.PSAS, x.akhir == null ? '-' : x.akhir);
     return row;
@@ -293,7 +593,7 @@ export async function generateRekapLengkapPDF(db: D1Database, nip: string, kelas
   const r2 = pStudents.map((x: any, i: number) => {
     const rec = x.records || {};
     const sm = x.summary || {};
-    const row = [i + 1, x.nis, x.nama];
+    const row: (string | number)[] = [i + 1, x.nis, x.nama];
     for (const d of pDates) row.push(rec[d] || '-');
     row.push(sm.Hadir || 0, sm.Sakit || 0, sm.Izin || 0, sm.Alfa || 0, sm.Dispensasi || 0, x.total || 0);
     return row;
@@ -301,7 +601,7 @@ export async function generateRekapLengkapPDF(db: D1Database, nip: string, kelas
 
   const r3 = jurnal.map((x: any, i: number) => [i + 1, fmtDateID(String(x.tanggal)), 'Jam ' + (x.jamKe || '-'), x.materi, x.kegiatan]);
 
-  const html = await buildHtml(db, {
+  const bytes = await buildPdf(db, {
     title: 'REKAP LENGKAP PEMBELAJARAN',
     subtitle: 'Mapel: ' + mapel + ' • Periode: ' + start + ' s/d ' + end,
     kelas,
@@ -315,14 +615,19 @@ export async function generateRekapLengkapPDF(db: D1Database, nip: string, kelas
       'Wali Kelas / Guru: ' + (await waliKelasNama(db, kelas)),
     ],
   });
-  return pdfPayload(html, 'Rekap_Nilai_Kehadiran_' + kelas);
+  return pdfPayload(bytes, 'Rekap_Nilai_Kehadiran_' + kelas);
 }
 
 // ---------- 7) MODUL AJAR (hasil AI) ----------
 export async function generateModulPDF(db: D1Database, text: string, judul: string): Promise<any> {
   const md = String(text || '').trim();
-  const html = await buildHtml(db, { title: judul || 'Modul_Ajar', notes: [md] });
-  return pdfPayload(html, judul || 'Modul_Ajar');
+  const paragraphs = md.split(/\n{2,}/).map((p) => p.replace(/\n/g, ' ')).filter(Boolean);
+  const rows = paragraphs.map((p, i) => [i + 1, p] as (string | number)[]);
+  const bytes = await buildPdf(db, {
+    title: judul || 'Modul_Ajar',
+    sections: [{ table: { headers: ['No', 'Isi'], rows } }],
+  });
+  return pdfPayload(bytes, judul || 'Modul_Ajar');
 }
 
 // ---------- helpers data ----------

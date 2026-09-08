@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KELAAS — Dashboard Super Admin</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>tailwind.config={theme:{extend:{colors:{brand:{50:'#eef2ff',100:'#e0e7ff',200:'#c7d2fe',300:'#a5b4fc',400:'#818cf8',500:'#6366f1',600:'#4f46e5',700:'#4338ca',800:'#3730a3',900:'#312e81'}}}}};</script>
+<style>
+body{font-family:'Inter',system-ui,sans-serif}
+.nav-link{transition:all .15s ease}
+.nav-link:hover{background:rgba(255,255,255,.08)}
+.nav-link.active{background:rgba(99,102,241,.25);color:#c7d2fe;border-left:3px solid #818cf8}
+.stat-card{transition:transform .15s ease,box-shadow .15s ease}
+.stat-card:hover{transform:translateY(-2px);box-shadow:0 10px 25px -5px rgba(0,0,0,.1)}
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.page{animation:fadeIn .2s ease}
+.modal-open{overflow:hidden}
+</style>
+</head>
+<body class="bg-slate-100 text-slate-800">
+<div class="flex min-h-screen">
+  <!-- ======================= SIDEBAR ======================= -->
+  <aside id="sidebar" class="fixed inset-y-0 left-0 w-64 bg-brand-900 text-brand-100 z-40 flex flex-col transition-transform -translate-x-full md:translate-x-0">
+    <div class="p-5 border-b border-brand-800 flex items-center gap-3">
+      <div class="w-10 h-10 rounded-xl bg-brand-500 flex items-center justify-center rotate-3 shadow"><i class="fas fa-graduation-cap text-white text-lg"></i></div>
+      <div><h1 class="font-bold text-white leading-tight">KELAAS<span class="text-brand-300">.</span></h1><p class="text-[10px] text-brand-300">Dashboard Super Admin</p></div>
+    </div>
+    <nav class="flex-1 py-4 px-3 space-y-1 overflow-y-auto">
+      <a href="#" data-page="dashboard" class="nav-link active flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium"><span class="w-5 text-center">📊</span> Dashboard</a>
+      <a href="#" data-page="payments" class="nav-link flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium"><span class="w-5 text-center">💳</span> Validasi Pembayaran <span id="navPendingBadge" class="ml-auto hidden text-[10px] bg-red-500 text-white rounded-full px-1.5 py-0.5"></span></a>
+      <a href="#" data-page="users" class="nav-link flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium"><span class="w-5 text-center">👥</span> Kelola Pengguna</a>
+      <a href="#" data-page="history" class="nav-link flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium"><span class="w-5 text-center">📜</span> Riwayat Transaksi</a>
+      <a href="#" data-page="settings" class="nav-link flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium"><span class="w-5 text-center">⚙️</span> Pengaturan</a>
+    </nav>
+    <div class="p-4 border-t border-brand-800 text-[11px] text-brand-300">v1.0.0 · KELAAS SaaS</div>
+  </aside>
+  <div id="sidebarOverlay" class="fixed inset-0 bg-black/50 z-30 hidden" onclick="toggleSidebar()"></div>
+
+  <!-- ======================= MAIN ======================= -->
+  <div class="flex-1 md:ml-64 flex flex-col min-w-0">
+    <!-- Header -->
+    <header class="bg-white border-b border-slate-200 px-4 md:px-6 py-3 flex items-center gap-4 sticky top-0 z-20">
+      <button class="md:hidden text-xl text-slate-500" onclick="toggleSidebar()">☰</button>
+      <h2 id="pageTitle" class="font-bold text-lg flex-1 truncate">Dashboard</h2>
+      <div class="hidden sm:flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5">
+        <div class="w-7 h-7 rounded-full bg-brand-600 text-white flex items-center justify-center text-xs font-bold" id="adminAvatar">A</div>
+        <span class="text-sm font-medium" id="adminName">Admin</span>
+      </div>
+      <button onclick="handleLogout()" class="px-3 py-1.5 rounded-lg border border-red-200 text-red-600 text-sm font-medium hover:bg-red-50">Logout</button>
+    </header>
+
+    <main class="flex-1 p-4 md:p-6" id="mainContent">
+      <!-- diisi JS -->
+    </main>
+  </div>
+</div>
+
+<!-- ======================= MODAL PREVIEW BUKTI ======================= -->
+<div id="modalBackdrop" class="modal-open hidden fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onclick="closeModal()">
+  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden" onclick="event.stopPropagation()">
+    <div class="p-4 border-b border-slate-200 flex items-center justify-between">
+      <h3 class="font-bold" id="modalTitle">Preview Bukti</h3>
+      <button onclick="closeModal()" class="text-slate-400 hover:text-slate-600 text-xl">&times;</button>
+    </div>
+    <div class="p-4 space-y-3">
+      <div class="bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-center min-h-48 overflow-hidden">
+        <img id="modalImg" src="" alt="Bukti transfer" class="max-w-full max-h-80 object-contain hidden">
+        <div id="modalImgPlaceholder" class="text-sm text-slate-400 p-6 text-center">
+          <div class="text-4xl mb-2">💳</div>
+          Bukti transfer dikirim manual via WhatsApp.<br>
+          <span class="text-xs text-slate-500">(Konfirmasi isi pesan WA dari guru)</span>
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-2 text-sm">
+        <div><span class="text-slate-500">Nama:</span> <b id="modalNama">-</b></div>
+        <div><span class="text-slate-500">Paket:</span> <b id="modalPlan">-</b></div>
+        <div><span class="text-slate-500">Jumlah:</span> <b id="modalAmount">-</b></div>
+        <div><span class="text-slate-500">Tanggal:</span> <b id="modalDate">-</b></div>
+      </div>
+      <div class="flex gap-2 pt-2">
+        <button onclick="approveModal()" class="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl text-sm">✓ Setujui Pembayaran</button>
+        <button onclick="rejectModal()" class="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold py-3 rounded-xl text-sm">✕ Tolak</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toastBox" class="fixed bottom-4 right-4 z-[60] space-y-2"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/js/all.min.js"></script>
+<script>
+/* ============================================================
+   KELAAS — Dashboard Super Admin (vanilla JS)
+   Endpoint Hono (sub-app /api/admin, butuh JWT SuperAdmin):
+     GET  /api/admin/stats
+     GET  /api/admin/users?filter=...
+     GET  /api/admin/payments?status=...
+     POST /api/admin/payments/:id/approve
+     POST /api/admin/payments/:id/reject
+     PUT  /api/admin/users/:id/upgrade
+     DELETE /api/admin/users/:id
+   Auth: localStorage 'kelaas_admin_token' → Authorization: Bearer
+   ============================================================ */
+var TOKEN = localStorage.getItem('kelaas_admin_token') || '';
+var PAGE_TITLES = {dashboard:'Dashboard',payments:'Validasi Pembayaran',users:'Kelola Pengguna',history:'Riwayat Transaksi',settings:'Pengaturan'};
+
+function $(id){return document.getElementById(id);}
+function esc(s){if(s==null)return'';var d=document.createElement('div');d.textContent=String(s);return d.innerHTML;}
+function rp(n){return 'Rp '+Number(n||0).toLocaleString('id-ID');}
+function fmtDate(v){if(!v)return'-';var m=String(v).match(/^(\d{4})-(\d{2})-(\d{2})/);return m?m[3]+'/'+m[2]+'/'+m[1]:v;}
+function toast(msg,type){type=type||'info';var c={success:'bg-emerald-600',error:'bg-red-600',info:'bg-slate-700'};var d=document.createElement('div');d.className=c[type]+' text-white text-sm px-4 py-3 rounded-lg shadow-lg';d.textContent=msg;$('toastBox').appendChild(d);setTimeout(function(){d.style.opacity='0';d.style.transition='opacity .3s';setTimeout(function(){d.remove();},300);},3000);}
+
+// ---- fetch wrapper: tambah Bearer, handle 401/403 ----
+function api(path,opts){opts=opts||{};opts.headers=Object.assign({'Authorization':'Bearer '+TOKEN},opts.headers||{});opts.headers['Content-Type']=opts.headers['Content-Type']||'application/json';return fetch(path,opts).then(function(r){return r.json().then(function(x){if(!r.ok){throw new Error(x.message||'HTTP '+r.status);}return x;});});}
+
+// ---- sidebar ----
+function toggleSidebar(){$('sidebar').classList.toggle('-translate-x-full');$('sidebarOverlay').classList.toggle('hidden');}
+document.querySelectorAll('.nav-link').forEach(function(a){a.onclick=function(ev){ev.preventDefault();var p=a.dataset.page;showPage(p);};});
+function setActive(page){document.querySelectorAll('.nav-link').forEach(function(a){a.classList.toggle('active',a.dataset.page===page);});$('pageTitle').textContent=PAGE_TITLES[page]||'Dashboard';}
+
+// ---- routing halaman ----
+function showPage(page){
+  setActive(page);
+  var main=$('mainContent');
+  main.innerHTML='<div class="text-center text-slate-400 py-20"><i class="fas fa-spinner fa-spin text-2xl"></i></div>';
+  if(page==='dashboard')loadDashboard(main);
+  else if(page==='payments')loadPayments(main,'pending');
+  else if(page==='history')loadPayments(main,'approved');
+  else if(page==='users')loadUsers(main,'');
+  else if(page==='settings')loadSettings(main);
+}
+
+// ================= DASHBOARD (stat cards) =================
+function loadDashboard(main){
+  api('/api/admin/stats').then(function(r){
+    var s=r.data||{};
+    main.innerHTML=
+    '<div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">'+
+      statCard('Total Pengguna','fa-users','text-indigo-600','bg-indigo-50',s.totalUsers)+
+      statCard('Pengguna Aktif','fa-user-check','text-emerald-600','bg-emerald-50',s.activeUsers)+
+      statCard('Menunggu Validasi','fa-clock','text-orange-600','bg-orange-50',s.pendingPayments,'#navPendingBadge')+
+      statCard('Pendapatan Bulan Ini','fa-coins','text-green-600','bg-green-50',rp(s.monthRevenue))+
+    '</div>';
+    if(s.pendingPayments>0){$('navPendingBadge').textContent=s.pendingPayments;$('navPendingBadge').classList.remove('hidden');}
+    else $('navPendingBadge').classList.add('hidden');
+    refreshPendingNav();
+  }).catch(function(e){main.innerHTML=errBox(e.message);});
+}
+function statCard(label,icon,ic,ibg,val){
+  return '<div class="stat-card bg-white rounded-2xl shadow-sm border border-slate-200 p-5">'+
+    '<div class="flex items-center justify-between"><div><p class="text-xs font-semibold text-slate-500 uppercase tracking-wide">'+label+'</p><p class="text-2xl font-bold mt-1">'+esc(val)+'</p></div>'+
+    '<div class="w-11 h-11 rounded-xl '+ibg+' flex items-center justify-center"><i class="fas '+icon+' '+ic+' text-lg"></i></div></div></div>';
+}
+
+// ================= VALIDASI & RIWAYAT PEMBAYARAN =================
+var PLAN_LABEL={wali_kelas:'Wali Kelas',guru_mapel:'Guru Mapel',walikelas_guru:'Wali Kelas + Guru'};
+function loadPayments(main,status){
+  var title=status==='pending'?'Validasi Pembayaran':'Riwayat Transaksi';
+  api('/api/admin/payments?status='+status).then(function(r){
+    var rows=r.data||[];
+    var tabs='<div class="flex gap-2 mb-4">'+
+      '<button onclick="showPage(\'payments\')" class="px-4 py-2 rounded-lg text-sm font-medium '+(status==='pending'?'bg-orange-500 text-white':'bg-white border border-slate-200')+'">Pending</button>'+
+      '<button onclick="showPage(\'history\')" class="px-4 py-2 rounded-lg text-sm font-medium '+(status==='approved'?'bg-emerald-600 text-white':'bg-white border border-slate-200')+'">Approved</button>'+
+      '</div>';
+    var head='<thead class="bg-slate-50 text-slate-500 text-xs uppercase"><tr>'+
+      '<th class="px-4 py-3 text-left">Tanggal</th><th class="px-4 py-3 text-left">Nama Guru</th><th class="px-4 py-3 text-left">Paket</th><th class="px-4 py-3 text-right">Jumlah</th><th class="px-4 py-3 text-left">Status</th><th class="px-4 py-3 text-right">Aksi</th></tr></thead>';
+    var body=rows.length?rows.map(function(p){
+      var st=p.status;
+      var badge=st==='approved'?'<span class="bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full text-xs font-semibold">Approved</span>'
+        :st==='rejected'?'<span class="bg-red-100 text-red-700 px-2 py-1 rounded-full text-xs font-semibold">Ditolak</span>'
+        :'<span class="bg-yellow-100 text-yellow-700 px-2 py-1 rounded-full text-xs font-semibold">Pending</span>';
+      var act=st==='pending'
+        ?'<button onclick="openModal('+p.id+')" class="text-indigo-600 hover:text-indigo-800 p-1.5" title="Lihat bukti"><i class="fas fa-image"></i> Lihat Bukti</button>'
+        :'<span class="text-slate-300">—</span>';
+      return '<tr class="border-t border-slate-100 hover:bg-slate-50">'+
+        '<td class="px-4 py-3 text-sm whitespace-nowrap">'+fmtDate(p.createdAt)+'</td>'+
+        '<td class="px-4 py-3 text-sm font-medium">'+esc(p.namaLengkap||p.username)+'</td>'+
+        '<td class="px-4 py-3 text-sm">'+esc(PLAN_LABEL[p.rolePlan]||p.rolePlan||'-')+'</td>'+
+        '<td class="px-4 py-3 text-sm text-right font-semibold">'+rp(p.amount)+'</td>'+
+        '<td class="px-4 py-3">'+badge+'</td>'+
+        '<td class="px-4 py-3 text-right text-sm">'+act+'</td></tr>';
+    }).join(''):'<tr><td colspan="6" class="px-4 py-10 text-center text-slate-400">Tidak ada data '+title.toLowerCase()+'</td></tr>';
+    main.innerHTML='<div class="page"><h3 class="font-bold mb-3">'+title+'</h3>'+tabs+'<div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-x-auto"><table class="w-full min-w-[720px]">'+head+'<tbody>'+body+'</tbody></table></div></div>';
+  }).catch(function(e){main.innerHTML=errBox(e.message);});
+}
+
+// ---- Modal preview ----
+var CURRENT_PAY=null;
+function openModal(id){
+  api('/api/admin/payments?status=pending').then(function(r){
+    var p=(r.data||[]).find(function(x){return x.id===id;});
+    if(!p)return toast('Payment tidak ditemukan','error');
+    CURRENT_PAY=p;
+    $('modalNama').textContent=p.namaLengkap||p.username;
+    $('modalPlan').textContent=PLAN_LABEL[p.rolePlan]||p.rolePlan||'-';
+    $('modalAmount').textContent=rp(p.amount);
+    $('modalDate').textContent=fmtDate(p.createdAt);
+    if(p.proofImageUrl){$('modalImg').src='/r2/'+p.proofImageUrl;$('modalImg').classList.remove('hidden');$('modalImgPlaceholder').classList.add('hidden');}
+    else{$('modalImg').classList.add('hidden');$('modalImgPlaceholder').classList.remove('hidden');}
+    $('modalBackdrop').classList.remove('hidden');document.body.classList.add('modal-open');
+  }).catch(function(e){toast(e.message,'error');});
+}
+function closeModal(){$('modalBackdrop').classList.add('hidden');document.body.classList.remove('modal-open');CURRENT_PAY=null;}
+function approveModal(){if(!CURRENT_PAY)return;actPayment(CURRENT_PAY.id,'approve');}
+function rejectModal(){if(!CURRENT_PAY)return;actPayment(CURRENT_PAY.id,'reject');}
+function actPayment(id,act){
+  api('/api/admin/payments/'+id+'/'+act,{method:'POST'}).then(function(r){
+    toast(r.message||(act==='approve'?'Disetujui':'Ditolak'),'success');closeModal();showPage('payments');refreshPendingNav();
+  }).catch(function(e){toast(e.message,'error');});
+}
+function refreshPendingNav(){api('/api/admin/stats').then(function(r){var n=(r.data&&r.data.pendingPayments)||0;if(n>0){$('navPendingBadge').textContent=n;$('navPendingBadge').classList.remove('hidden');}else $('navPendingBadge').classList.add('hidden');}).catch(function(){});}
+
+// ================= KELOLA PENGGUNA =================
+function loadUsers(main,filter){
+  var filters=[['','Semua'],['trial','Trial'],['premium','Premium'],['free','Free'],['expired','Expired']];
+  var ftabs=filters.map(function(f){return '<button onclick="showUsersFilter(\''+f[0]+'\')" class="px-3 py-1.5 rounded-lg text-xs font-medium '+(filter===f[0]?'bg-brand-600 text-white':'bg-white border border-slate-200')+'">'+f[1]+'</button>';}).join(' ');
+  var q=s(window.__userSearch||'');
+  api('/api/admin/users'+(filter?'?filter='+filter:'')+(q?'&search='+encodeURIComponent(q):'')).then(function(r){
+    var rows=r.data||[];
+    var head='<thead class="bg-slate-50 text-slate-500 text-xs uppercase"><tr>'+
+      '<th class="px-4 py-3 text-left">Nama</th><th class="px-4 py-3 text-left">Username</th><th class="px-4 py-3 text-left">Unique ID</th><th class="px-4 py-3 text-left">Peran</th><th class="px-4 py-3 text-left">Paket</th><th class="px-4 py-3 text-left">Kedaluwarsa</th><th class="px-4 py-3 text-right">Aksi</th></tr></thead>';
+    var body=rows.length?rows.map(function(u){
+      var pt=u.planType||'free';
+      var badge=pt==='premium'?(u.expired?'<span class="bg-red-100 text-red-600 px-2 py-1 rounded-full text-xs">Expired</span>':'<span class="bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full text-xs">Premium</span>')
+        :pt==='trial'?(u.expired?'<span class="bg-red-100 text-red-600 px-2 py-1 rounded-full text-xs">Trial Habis</span>':'<span class="bg-sky-100 text-sky-700 px-2 py-1 rounded-full text-xs">Trial</span>')
+        :'<span class="bg-slate-100 text-slate-600 px-2 py-1 rounded-full text-xs">Free</span>';
+      var exp=u.subscriptionExpiresAt||u.trialEndsAt;
+      return '<tr class="border-t border-slate-100 hover:bg-slate-50">'+
+        '<td class="px-4 py-3 text-sm font-medium">'+esc(u.namaLengkap||'-')+'</td>'+
+        '<td class="px-4 py-3 text-sm">'+esc(u.username)+'</td>'+
+        '<td class="px-4 py-3 text-sm font-mono text-brand-700">'+esc(u.uniqueId||'-')+'</td>'+
+        '<td class="px-4 py-3 text-sm">'+esc(u.role||'-')+'</td>'+
+        '<td class="px-4 py-3">'+badge+'</td>'+
+        '<td class="px-4 py-3 text-sm">'+fmtDate(exp)+'</td>'+
+        '<td class="px-4 py-3 text-right whitespace-nowrap">'+
+          '<button onclick="openEditUser('+u.id+',\''+esc(u.username)+'\',\''+esc(u.planType||'free')+'\')" class="text-indigo-600 hover:text-indigo-800 p-1.5" title="Edit status"><i class="fas fa-edit"></i></button>'+
+          '<button onclick="deleteUser('+u.id+',\''+esc(u.username)+'\')" class="text-red-600 hover:text-red-800 p-1.5" title="Hapus akses"><i class="fas fa-trash"></i></button>'+
+        '</td></tr>';
+    }).join(''):'<tr><td colspan="7" class="px-4 py-10 text-center text-slate-400">Tidak ada pengguna</td></tr>';
+    main.innerHTML='<div class="page"><h3 class="font-bold mb-3">Kelola Pengguna</h3>'+
+      '<div class="flex gap-2 mb-3 flex-wrap items-center">'+
+        '<div class="relative flex-1 min-w-[200px] max-w-sm">'+
+          '<i class="fas fa-search absolute left-3 top-3 text-slate-400 text-sm"></i>'+
+          '<input id="userSearch" oninput="userSearchInput(this.value)" placeholder="Cari nama, email, atau unique ID…" value="'+esc(q)+'" class="w-full pl-9 pr-9 py-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-brand-500 outline-none">'+
+          '<button onclick="clearUserSearch()" class="absolute right-2 top-2.5 text-slate-400 hover:text-slate-600 text-sm">&times;</button>'+
+        '</div>'+
+      '</div>'+
+      '<div class="flex gap-2 mb-4 flex-wrap">'+ftabs+'</div>'+
+      '<div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-x-auto"><table class="w-full min-w-[760px]">'+head+'<tbody>'+body+'</tbody></table></div></div>';
+  }).catch(function(e){main.innerHTML=errBox(e.message);});
+}
+function showUsersFilter(f){window.__userFilter=f;setActive('users');$('pageTitle').textContent='Kelola Pengguna';loadUsers($('mainContent'),f);}
+function userSearchInput(v){window.__userSearch=v;if(window.__userSearchTimer)clearTimeout(window.__userSearchTimer);window.__userSearchTimer=setTimeout(function(){loadUsers($('mainContent'),window.__userFilter||'');},350);}
+function clearUserSearch(){window.__userSearch='';var inp=$('userSearch');if(inp)inp.value='';loadUsers($('mainContent'),window.__userFilter||'');}
+function openEditUser(id,username,plan){var opts='';['free','trial','premium'].forEach(function(p){opts+='<option value="'+p+'" '+(p===plan?'selected':'')+'>'+p.charAt(0).toUpperCase()+p.slice(1)+'</option>';});
+  var days=prompt('Paket baru untuk '+username+'? (free / trial / premium)\nMasukkan juga durasi hari jika premium/trial (30/180, default 30):');
+  if(days===null)return;
+  var parts=String(days).trim().split(' ');
+  var p=parts[0]||'premium';
+  var d=parseInt(parts[1],10)||30;
+  if(['free','trial','premium'].indexOf(p)<0){return toast('Paket tidak valid','error');}
+  api('/api/admin/users/'+id+'/upgrade',{method:'PUT',body:JSON.stringify({plan_type:p,duration_days:d})}).then(function(r){toast(r.message,'success');showPage('users');}).catch(function(e){toast(e.message,'error');});
+}
+function deleteUser(id,username){if(!confirm('Hapus akses '+username+'? Data user & pembayarannya ikut terhapus.'))return;
+  api('/api/admin/users/'+id,{method:'DELETE'}).then(function(r){toast(r.message,'success');showPage('users');}).catch(function(e){toast(e.message,'error');});
+}
+
+// ================= PENGATURAN =================
+function loadSettings(main){
+  main.innerHTML='<div class="page"><h3 class="font-bold mb-3">Pengaturan</h3>'+
+  '<div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 max-w-lg">'+
+  '<p class="text-sm text-slate-500 mb-2">Konfigurasi subscription ada di server (<code>src/api/register.ts</code> & <code>wrangler.jsonc</code>).</p>'+
+  '<ul class="text-sm space-y-1 text-slate-600 list-disc pl-5">'+
+  '<li>Harga paket: Wali Kelas Rp 50.000, Guru Mapel Rp 35.000, Wali Kelas+Guru Rp 75.000</li>'+
+  '<li>Nomor WA admin: env <code>ADMIN_WA</code></li>'+
+  '<li>Durasi premium: 30 / 180 hari</li></ul></div></div>';
+}
+
+function errBox(msg){return '<div class="bg-red-50 border border-red-200 text-red-700 rounded-xl p-6 text-center"><p class="font-semibold">Gagal memuat data</p><p class="text-sm mt-1">'+esc(msg)+'</p></div>';}
+
+// ---- auth: cek token; bila tak ada → login form ----
+function handleLogout(){localStorage.removeItem('kelaas_admin_token');location.reload();}
+function initLogin(){$('mainContent').innerHTML=
+  '<div class="max-w-sm mx-auto mt-10 bg-white rounded-2xl shadow-sm border border-slate-200 p-6"><h3 class="font-bold text-lg mb-1">Login Super Admin</h3>'+
+  '<p class="text-sm text-slate-500 mb-4">Masuk dengan akun admin KELAAS.</p>'+
+  '<input id="lgUser" placeholder="username" class="w-full border border-slate-300 rounded-lg px-3 py-2.5 mb-3 text-sm"><input id="lgPass" type="password" placeholder="password" class="w-full border border-slate-300 rounded-lg px-3 py-2.5 mb-4 text-sm">'+
+  '<button onclick="doLogin()" class="w-full bg-brand-700 hover:bg-brand-800 text-white font-bold py-2.5 rounded-lg text-sm">Masuk</button></div>';}
+function doLogin(){var u=$('lgUser').value.trim(),p=$('lgPass').value;if(!u||!p)return toast('Isi username & password','error');
+  fetch('/__gas',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({fn:'validateLogin',args:[u,p]})}).then(function(r){return r.json();}).then(function(x){
+    if(!x.success)return toast(x.message||'Login gagal','error');
+    var usr=x.user||{};
+    if((usr.role!=='SuperAdmin')&&(usr.role!=='super_admin'))return toast('Bukan Super Admin','error');
+    TOKEN=usr.token||'';localStorage.setItem('kelaas_admin_token',TOKEN);$('adminName').textContent=usr.namaLengkap||usr.username;$('adminAvatar').textContent=(usr.namaLengkap||'A').charAt(0).toUpperCase();
+    showPage('dashboard');refreshPendingNav();
+  }).catch(function(e){toast(e.message,'error');});}
+
+// ---- boot ----
+document.addEventListener('DOMContentLoaded',function(){
+  window.__userFilter='';window.__userSearch='';
+  if(TOKEN){showPage('dashboard');refreshPendingNav();}
+  else initLogin();
+});
+</script>
+</body>
+</html>

@@ -4,3 +4,13 @@ dist/
 .dev.vars
 .dev.vars.local
 *.log
+
+# Backup & script DB lokal — jangan commit
+backup_*.sql
+backup_*.json
+database_d1*.sql
+drop.sql
+wipe.sql
+live_tables.txt
+seed_superadmin.sql
+schema.sql

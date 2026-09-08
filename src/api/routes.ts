@@ -5,13 +5,26 @@
 // ============================================================
 import type { Context } from 'hono';
 import type { D1Database } from '@cloudflare/workers-types';
-import { all, one, run, insertId, num, s } from '../lib/db';
+import { all, one, run, insertId, num, s, ensureCbtColumns } from '../lib/db';
 import { hashPassword, verifyPassword } from '../lib/passwords';
-import { hariWIB, nowWIB, randomToken, todayWIB } from '../lib/crypto';
+import { hariWIB, nowWIB, randomToken, todayWIB, fmtWIB } from '../lib/crypto';
+import { signJwt, getJwtSecret } from '../lib/jwt';
+import { checkUserAccess, planStatus } from '../lib/subscription';
 
 // ---------- helpers HTTP ----------
 function ok(data: unknown, message = 'OK') {
   return { success: true, data, message };
+}
+// unique_id format GRU-<YYMM>-<4char> (contoh GRU-2608-8A9F)
+function genUniqueId(): string {
+  const now = new Date();
+  const ym = String(now.getFullYear()).slice(2) + String(now.getMonth() + 1).padStart(2, '0');
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let r = '';
+  const rnd = new Uint8Array(4);
+  crypto.getRandomValues(rnd);
+  for (let i = 0; i < 4; i++) r += chars[rnd[i] % chars.length];
+  return `GRU-${ym}-${r}`;
 }
 function err(message: string, status = 400) {
   return { success: false, message, _status: status };
@@ -60,6 +73,13 @@ function addMinutesWib(ts: string, mins: number): string {
   const p = (n: number) => String(n).padStart(2, '0');
   return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}`;
 }
+
+// Pesan status langganan (dipakai saat login ditolak — status 401).
+const SUB_STATUS_MESSAGES: Record<string, string> = {
+  TRIAL_EXPIRED: 'Masa trial Anda berakhir. Silakan berlangganan untuk melanjutkan.',
+  SUBSCRIPTION_EXPIRED: 'Langganan Anda berakhir. Perbarui langganan Anda.',
+  NO_SUBSCRIPTION: 'Akun belum aktif. Silakan berlangganan dulu melalui halaman Langganan.',
+};
 
 // ---------- normalisasi field siswa (profil & ortu) ----------
 function siswaFields(src: Record<string, any>): Record<string, string> {
@@ -126,7 +146,7 @@ async function dispatch(c: Context, db: D1Database, action: string, method: stri
       const u = s(body.username);
       const p = s(body.password);
       if (!u || !p) return fail('Username dan password wajib diisi');
-      const user = await one(db, 'SELECT id, username, password, role, kelas, nama_lengkap AS namaLengkap, nip FROM users WHERE username=?', [u]);
+      const user = await one(db, 'SELECT id, username, password, role, kelas, nama_lengkap AS namaLengkap, nip, plan_type AS planType, trial_ends_at AS trialEndsAt, subscription_expires_at AS subscriptionExpiresAt FROM users WHERE username=?', [u]);
       if (!user) return fail('Username atau password salah', 401);
       const stored = s(user.password);
       let valid = await verifyPassword(p, stored);
@@ -144,7 +164,83 @@ async function dispatch(c: Context, db: D1Database, action: string, method: stri
       const { password: _pw, ...rest } = user;
       const roles = [rest.role];
       if (rest.nip && rest.role === 'Walikelas') roles.push('Guru');
-      return json(ok({ ...rest, roles }, 'Login berhasil'));
+      const token = await signJwt({ sub: rest.id, username: rest.username, role: rest.role }, getJwtSecret(c.env));
+      // ✅ BUG FIX: user yang self-register (tanpa NIP) wajib punya langganan
+      // aktif sebelum bisa masuk. Sebelumnya login selalu HTTP 200 walau plan
+      // habis — frontend tidak bisa mendeteksi, user terlihat "masuk" tapi
+      // semua aksi ditolak. Sekarang login ditolak dgn pesan jelas + kode.
+      const st = planStatus({ ...rest, plan_type: rest.planType, trial_ends_at: rest.trialEndsAt, subscription_expires_at: rest.subscriptionExpiresAt });
+      if (!st.ok) {
+        return json({ success: false, message: SUB_STATUS_MESSAGES[st.code] || 'Langganan tidak aktif', code: st.code, _status: 401 }, 401);
+      }
+      return json(ok({
+        ...rest,
+        planType: rest.planType || 'free',
+        trialEndsAt: rest.trialEndsAt || null,
+        subscriptionExpiresAt: rest.subscriptionExpiresAt || null,
+        token,
+        roles,
+      }, 'Login berhasil'));
+    }
+
+    // ===================== REGISTER (free trial) =====================
+    case 'register': {
+      if (method !== 'POST') return fail('Method not allowed', 405);
+      const u = s(body.username).trim();
+      const p = s(body.password);
+      const nama = s(body.namaLengkap || body.nama).trim();
+      const email = s(body.email).trim().toLowerCase();
+      if (!u || !p) return fail('Username dan password wajib diisi');
+      if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return fail('Email tidak valid');
+      // Self-register: hanya izinkan role guru; SuperAdmin/admin lain dilarang.
+      let role = s(body.role);
+      if (role !== 'Guru' && role !== 'Walikelas') role = 'Guru';
+      const kelas = role === 'Walikelas' ? s(body.kelas).trim() : '';
+      const ck = await one(db, 'SELECT id FROM users WHERE username=?', [u]);
+      if (ck) return fail('Username sudah dipakai');
+      const hash = await hashPassword(p);
+      // Trial 30 hari + unique_id GRU-YYMM-XXXX
+      const trialEndsAt = fmtWIB(Date.now() + 30 * 24 * 3600 * 1000);
+      const uniqueId = genUniqueId();
+      await insertId(
+        db,
+        "INSERT INTO users (username,password,role,kelas,nama_lengkap,nip,email,unique_id,plan_type,trial_ends_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+        [u, hash, role, kelas, nama, '', email || null, uniqueId, 'trial', trialEndsAt],
+      );
+      return json(ok({ username: u, role, planType: 'trial', trialEndsAt, unique_id: uniqueId }, 'Registrasi berhasil. Trial 30 hari aktif.'));
+    }
+
+    // ===================== PLAN (get own / admin set) =====================
+    case 'plan': {
+      if (method === 'GET') {
+        const check = await checkUserAccess(c, db);
+        if (!check.ok) return json(check.body, check.status);
+        return json(ok(check.user));
+      }
+      if (method === 'PUT') {
+        const check = await checkUserAccess(c, db);
+        if (!check.ok) return json(check.body, check.status);
+        if (check.user.role !== 'SuperAdmin') return fail('Hanya SuperAdmin', 403);
+        const id = s(body.id) || P('id');
+        const username = s(body.username) || P('username');
+        const target = id
+          ? await one(db, 'SELECT id FROM users WHERE id=?', [id])
+          : username
+            ? await one(db, 'SELECT id FROM users WHERE username=?', [username])
+            : null;
+        if (!target) return fail('User tidak ditemukan');
+        const plan = s(body.plan_type);
+        if (!['free', 'trial', 'premium'].includes(plan)) return fail('plan_type tidak valid');
+        const durDays = [30, 180].includes(num(body.duration_days)) ? num(body.duration_days) : 30;
+        const trialDays = num(body.trial_days) || 7;
+        let trialEndsAt: string | null = null;
+        let subExpiresAt: string | null = null;
+        if (plan === 'trial') trialEndsAt = fmtWIB(Date.now() + trialDays * 86400000);
+        if (plan === 'premium') subExpiresAt = fmtWIB(Date.now() + durDays * 86400000);
+        await run(db, 'UPDATE users SET plan_type=?, trial_ends_at=?, subscription_expires_at=? WHERE id=?', [plan, trialEndsAt, subExpiresAt, target.id]);
+        return json(ok(null, 'Plan ' + username + ' → ' + plan));
+      }
+      return fail('Method not allowed', 405);
     }
 
     case 'test': {
@@ -194,17 +290,17 @@ async function dispatch(c: Context, db: D1Database, action: string, method: stri
         const u = await one(db, 'SELECT COUNT(*) AS c FROM users');
         if (num(u?.c) === 0) {
           const seed = [
-            ['admin', await hashPassword('admin123'), 'SuperAdmin', 'ALL', 'Administrator', ''],
-            ['walas7a', await hashPassword('guru123'), 'Walikelas', '7A', 'Siti Aminah, S.Pd', '19850101'],
-            ['19850101', await hashPassword('guru123'), 'Guru', 'GURU', 'Siti Aminah, S.T', '19850101'],
-            ['toolman', await hashPassword('tool123'), 'Toolman', 'TKJ', 'Andi Prasetyo', ''],
-            ['sekret7a', await hashPassword('sekret123'), 'Sekretaris', '7A', 'Dewi Lestari', ''],
-            ['benda7a', await hashPassword('benda123'), 'Bendahara', '7A', 'Ahmad Fauzi', ''],
-            ['ketua7a', await hashPassword('ketua123'), 'Ketua', '7A', 'Budi Santoso', ''],
-            ['001', await hashPassword('siswa123'), 'Siswa', '7A', 'Ahmad Rizki', ''],
-            ['002', await hashPassword('siswa123'), 'Siswa', '7A', 'Siti Nurhaliza', ''],
+            ['admin', await hashPassword('admin123'), 'SuperAdmin', 'ALL', 'Administrator', '', 'free', null, null],
+            ['walas7a', await hashPassword('guru123'), 'Walikelas', '7A', 'Siti Aminah, S.Pd', '19850101', 'premium', null, '2099-12-31 23:59:59'],
+            ['19850101', await hashPassword('guru123'), 'Guru', 'GURU', 'Siti Aminah, S.T', '19850101', 'premium', null, '2099-12-31 23:59:59'],
+            ['toolman', await hashPassword('tool123'), 'Toolman', 'TKJ', 'Andi Prasetyo', '', 'free', null, null],
+            ['sekret7a', await hashPassword('sekret123'), 'Sekretaris', '7A', 'Dewi Lestari', '', 'free', null, null],
+            ['benda7a', await hashPassword('benda123'), 'Bendahara', '7A', 'Ahmad Fauzi', '', 'free', null, null],
+            ['ketua7a', await hashPassword('ketua123'), 'Ketua', '7A', 'Budi Santoso', '', 'free', null, null],
+            ['001', await hashPassword('siswa123'), 'Siswa', '7A', 'Ahmad Rizki', '', 'free', null, null],
+            ['002', await hashPassword('siswa123'), 'Siswa', '7A', 'Siti Nurhaliza', '', 'free', null, null],
           ];
-          for (const r of seed) await run(db, 'INSERT INTO users (username,password,role,kelas,nama_lengkap,nip) VALUES (?,?,?,?,?,?)', r);
+          for (const r of seed) await run(db, 'INSERT INTO users (username,password,role,kelas,nama_lengkap,nip,plan_type,trial_ends_at,subscription_expires_at) VALUES (?,?,?,?,?,?,?,?,?)', r);
         }
         const st = await one(db, 'SELECT COUNT(*) AS c FROM settings');
         if (num(st?.c) === 0) {
@@ -414,7 +510,124 @@ async function dispatch(c: Context, db: D1Database, action: string, method: stri
       } else {
         await run(db, 'INSERT INTO guru (nip,nama_guru,mapel,kelas_diampu) VALUES (?,?,?,?)', [nip, '', '', kelas]);
       }
+      // Simpan juga ke master kelas supaya jadi pilihan global.
+      await run(db, 'INSERT OR IGNORE INTO master_kelas (kelas) VALUES (?)', [kelas]);
       return json(ok(null, 'Kelas ' + kelas + ' ditambahkan'));
+    }
+
+    case 'guru-add-mapel': {
+      if (method !== 'POST') return fail('Method not allowed', 405);
+      const nip = body.nip ?? P('nip');
+      const mapel = body.mapel ?? P('mapel');
+      if (!nip || !mapel) return fail('nip dan mapel wajib diisi');
+      const g = await one(db, 'SELECT id, mapel FROM guru WHERE nip=?', [nip]);
+      if (g) {
+        const ex = String(g.mapel || '').split(',').map((x) => x.trim()).filter(Boolean);
+        if (!ex.includes(mapel)) {
+          ex.push(mapel);
+          await run(db, 'UPDATE guru SET mapel=? WHERE nip=?', [ex.join(','), nip]);
+        }
+      } else {
+        await run(db, 'INSERT INTO guru (nip,nama_guru,mapel,kelas_diampu) VALUES (?,?,?,?)', [nip, '', mapel, '']);
+      }
+      // Simpan juga ke master mapel supaya jadi pilihan global.
+      await run(db, 'INSERT OR IGNORE INTO master_mapel (mapel) VALUES (?)', [mapel]);
+      return json(ok(null, 'Mapel ' + mapel + ' ditambahkan'));
+    }
+
+    case 'master-kelas': {
+      if (method === 'GET') {
+        // Kelas = token yang diawali romawi/angka + spasi (contoh 'X TKJ 1', '7A').
+        // Abaikan baris header/noise seperti 'Kelas' / '--' / label UI.
+        const isKelas = (x: string) => /^(\d|[IVXLCDM]{1,7})\s|^\d+[A-Z]?$/i.test(x);
+        const rows = await all(db, 'SELECT kelas FROM master_kelas ORDER BY kelas', []);
+        // Gabung dengan kelas yang sudah dipakai guru/kelas siswa agar lengkap.
+        const set = new Set<string>(rows.map((r) => s(r.kelas)).filter(isKelas));
+        const gRows = await all(db, 'SELECT kelas_diampu FROM guru WHERE kelas_diampu IS NOT NULL AND kelas_diampu<>\'\'', []);
+        for (const r of gRows) for (const k of String(r.kelas_diampu).split(',').map((x) => x.trim()).filter(Boolean)) if (isKelas(k)) set.add(k);
+        const sRows = await all(db, "SELECT DISTINCT kelas FROM siswa WHERE kelas IS NOT NULL AND kelas<>''", []);
+        for (const r of sRows) if (isKelas(s(r.kelas))) set.add(s(r.kelas));
+        const jRows = await all(db, "SELECT DISTINCT kelas FROM jadwal_pelajaran WHERE kelas IS NOT NULL AND kelas<>''", []);
+        for (const r of jRows) if (isKelas(s(r.kelas))) set.add(s(r.kelas));
+        return json(ok(Array.from(set).sort()));
+      }
+      if (method === 'POST') {
+        const kelas = s(body.kelas ?? P('kelas')).trim();
+        if (!kelas) return fail('kelas wajib diisi');
+        await run(db, 'INSERT OR IGNORE INTO master_kelas (kelas) VALUES (?)', [kelas]);
+        return json(ok(null, 'Kelas ' + kelas + ' disimpan ke master'));
+      }
+      if (method === 'PUT') {
+        const old = s(body.old ?? P('old')).trim();
+        const kel = s(body.kelas ?? P('kelas')).trim();
+        if (!old || !kel) return fail('old dan kelas wajib diisi');
+        await run(db, 'UPDATE master_kelas SET kelas=? WHERE kelas=?', [kel, old]);
+        // Update juga referensi di guru & siswa & jadwal agar konsisten.
+        await run(db, "UPDATE guru SET kelas_diampu=REPLACE(kelas_diampu, ?, ?) WHERE kelas_diampu LIKE '%' || ? || '%'", [old, kel, old]);
+        await run(db, 'UPDATE siswa SET kelas=? WHERE kelas=?', [kel, old]);
+        await run(db, 'UPDATE jadwal_pelajaran SET kelas=? WHERE kelas=?', [kel, old]);
+        return json(ok(null, 'Kelas ' + old + ' → ' + kel));
+      }
+      if (method === 'DELETE') {
+        const kelas = s(body.kelas ?? P('kelas')).trim();
+        if (!kelas) return fail('kelas wajib diisi');
+        await run(db, 'DELETE FROM master_kelas WHERE kelas=?', [kelas]);
+        // Hapus dari guru.kelas_diampu (per-row, bukan substring).
+        const gRows = await all(db, 'SELECT id, kelas_diampu FROM guru WHERE kelas_diampu LIKE ?', ['%' + kelas + '%']);
+        for (const r of gRows) {
+          const rest = String(r.kelas_diampu).split(',').map((x) => x.trim()).filter(Boolean).filter((x: string) => x !== kelas);
+          await run(db, 'UPDATE guru SET kelas_diampu=? WHERE id=?', [rest.join(','), r.id]);
+        }
+        return json(ok(null, 'Kelas ' + kelas + ' dihapus'));
+      }
+      return fail('Method not allowed', 405);
+    }
+
+    case 'master-mapel': {
+      if (method === 'GET') {
+        const rows = await all(db, 'SELECT mapel FROM master_mapel ORDER BY mapel', []);
+        const set = new Set<string>(rows.map((r) => s(r.mapel)).filter(Boolean));
+        // Gabung mapel yang sudah dipakai guru agar lengkap & filter token mirip kelas.
+        const gRows = await all(db, 'SELECT mapel FROM guru WHERE mapel IS NOT NULL AND mapel<>\'\'', []);
+        for (const r of gRows) {
+          for (const m of String(r.mapel).split(',').map((x) => x.trim()).filter(Boolean)) {
+            if (!/^[IVXLCDM]{1,7}\s/.test(m)) set.add(m);
+          }
+        }
+        const pRows = await all(db, "SELECT DISTINCT mapel FROM presensi_mapel WHERE mapel IS NOT NULL AND mapel<>''", []);
+        for (const r of pRows) if (s(r.mapel)) set.add(s(r.mapel));
+        const jRows = await all(db, "SELECT DISTINCT mata_pelajaran AS mapel FROM jadwal_pelajaran WHERE mata_pelajaran IS NOT NULL AND mata_pelajaran<>''", []);
+        for (const r of jRows) if (s(r.mapel)) set.add(s(r.mapel));
+        return json(ok(Array.from(set).sort()));
+      }
+      if (method === 'POST') {
+        const mapel = s(body.mapel ?? P('mapel')).trim();
+        if (!mapel) return fail('mapel wajib diisi');
+        await run(db, 'INSERT OR IGNORE INTO master_mapel (mapel) VALUES (?)', [mapel]);
+        return json(ok(null, 'Mapel ' + mapel + ' disimpan ke master'));
+      }
+      if (method === 'PUT') {
+        const old = s(body.old ?? P('old')).trim();
+        const mp = s(body.mapel ?? P('mapel')).trim();
+        if (!old || !mp) return fail('old dan mapel wajib diisi');
+        await run(db, 'UPDATE master_mapel SET mapel=? WHERE mapel=?', [mp, old]);
+        await run(db, "UPDATE guru SET mapel=REPLACE(mapel, ?, ?) WHERE mapel LIKE '%' || ? || '%'", [old, mp, old]);
+        await run(db, 'UPDATE jadwal_pelajaran SET mata_pelajaran=? WHERE mata_pelajaran=?', [mp, old]);
+        await run(db, 'UPDATE presensi_mapel SET mapel=? WHERE mapel=?', [mp, old]);
+        return json(ok(null, 'Mapel ' + old + ' → ' + mp));
+      }
+      if (method === 'DELETE') {
+        const mapel = s(body.mapel ?? P('mapel')).trim();
+        if (!mapel) return fail('mapel wajib diisi');
+        await run(db, 'DELETE FROM master_mapel WHERE mapel=?', [mapel]);
+        const gRows = await all(db, 'SELECT id, mapel FROM guru WHERE mapel LIKE ?', ['%' + mapel + '%']);
+        for (const r of gRows) {
+          const rest = String(r.mapel).split(',').map((x) => x.trim()).filter(Boolean).filter((x: string) => x !== mapel);
+          await run(db, 'UPDATE guru SET mapel=? WHERE id=?', [rest.join(','), r.id]);
+        }
+        return json(ok(null, 'Mapel ' + mapel + ' dihapus'));
+      }
+      return fail('Method not allowed', 405);
     }
 
     case 'mapel-guru-kelas': {
@@ -423,7 +636,23 @@ async function dispatch(c: Context, db: D1Database, action: string, method: stri
       const kelas = P('kelas');
       if (!nip || !kelas) return fail('nip dan kelas wajib diisi');
       const rows = await all(db, 'SELECT DISTINCT mata_pelajaran AS mapel FROM jadwal_pelajaran WHERE nip=? AND kelas=?', [nip, kelas]);
-      return json(ok(rows.map((r) => r.mapel)));
+      const set = new Set<string>(rows.map((r) => s(r.mapel)).filter(Boolean));
+      // Fallback: mapel dari guru (kelas_diampu) dan presensi_mapel — untuk
+      // guru yang belum punya jadwal pelajaran (kalau tidak, dropdown mapel
+      // kosong dan tidak bisa buat ulangan CBT).
+      const g = await one(db, 'SELECT mapel, kelas_diampu FROM guru WHERE nip=?', [nip]);
+      if (g) {
+        if (s(g.kelas_diampu).split(',').map((x) => x.trim()).includes(kelas)) {
+          // Beberapa data lama menaruh daftar KELAS di kolom mapel — filter token
+          // yang mirip nama kelas (diawali angka romawi + spasi) supaya dropdown
+          // mapel tidak terkontaminasi.
+          const gm = s(g.mapel).split(',').map((x) => x.trim()).filter(Boolean).filter((x: string) => !/^[IVXLCDM]{1,7}\s/.test(x));
+          for (const m of gm) set.add(m);
+        }
+      }
+      const pm = await all(db, 'SELECT DISTINCT mapel FROM presensi_mapel WHERE nip=? AND kelas=?', [nip, kelas]);
+      for (const x of pm) if (s(x.mapel)) set.add(s(x.mapel));
+      return json(ok(Array.from(set)));
     }
 
     case 'wali-kelas': {
@@ -1184,7 +1413,16 @@ async function dispatch(c: Context, db: D1Database, action: string, method: stri
         const ck = await one(db, 'SELECT id FROM users WHERE username=?', [s(body.username)]);
         if (ck) return fail('Username sudah dipakai');
         const hash = await hashPassword(s(body.password));
-        await run(db, 'INSERT INTO users (username,password,role,kelas,nama_lengkap,nip) VALUES (?,?,?,?,?,?)', [s(body.username), hash, s(body.role), s(body.kelas), s(body.nama), s(body.kodeGuru)]);
+        const role = s(body.role);
+        // Guru (Walikelas/Guru) otomatis dapat trial 7 hari bila admin tak kirim plan.
+        let planType = s(body.plan_type);
+        let trialEndsAt: string | null = null;
+        if (!planType && (role === 'Walikelas' || role === 'Guru')) {
+          planType = 'trial';
+          trialEndsAt = fmtWIB(Date.now() + 7 * 24 * 3600 * 1000);
+        }
+        if (!planType) planType = 'free';
+        await run(db, 'INSERT INTO users (username,password,role,kelas,nama_lengkap,nip,plan_type,trial_ends_at) VALUES (?,?,?,?,?,?,?,?)', [s(body.username), hash, role, s(body.kelas), s(body.nama), s(body.kodeGuru), planType, trialEndsAt]);
         return json(ok(null, 'User ' + s(body.username) + ' ditambahkan (password aman)'));
       }
       if (method === 'PUT') {
@@ -1538,6 +1776,7 @@ async function dispatch(c: Context, db: D1Database, action: string, method: stri
         `CREATE TABLE IF NOT EXISTS cbt_soal (id INTEGER PRIMARY KEY AUTOINCREMENT, ujian_id INTEGER, no_urut INTEGER, jenis INTEGER, soal TEXT, opsi TEXT, kunci TEXT, pembahasan TEXT, bobot INTEGER DEFAULT 1)`,
         `CREATE TABLE IF NOT EXISTS cbt_sesi (id INTEGER PRIMARY KEY AUTOINCREMENT, ujian_id INTEGER, nis TEXT, nama TEXT, mulai TEXT, deadline TEXT, selesai INTEGER DEFAULT 0, skor REAL, total_benar INTEGER DEFAULT 0, total_soal INTEGER DEFAULT 0, uraian_menunggu INTEGER DEFAULT 0)`,
         `CREATE TABLE IF NOT EXISTS cbt_jawaban (id INTEGER PRIMARY KEY AUTOINCREMENT, sesi_id INTEGER, soal_id INTEGER, jawaban TEXT, benar INTEGER, feedback TEXT, sumber TEXT DEFAULT 'manual', UNIQUE(sesi_id,soal_id))`,
+        `CREATE TABLE IF NOT EXISTS cbt_pelanggaran (id INTEGER PRIMARY KEY AUTOINCREMENT, sesi_id INTEGER, ujian_id INTEGER, nis TEXT, nama TEXT, jenis TEXT DEFAULT 'tab', detail TEXT, waktu TEXT, status TEXT DEFAULT 'pending')`,
       ];
       let okCount = 0;
       const errs: string[] = [];
@@ -1547,6 +1786,17 @@ async function dispatch(c: Context, db: D1Database, action: string, method: stri
           okCount++;
         } catch (e: unknown) {
           errs.push(String(e instanceof Error ? e.message : e));
+        }
+      }
+      // Kolom anti-mencontek pada cbt_sesi (idempotent).
+      for (const [col, typ] of [['violations', 'INTEGER DEFAULT 0'], ['locked', 'INTEGER DEFAULT 0'], ['locked_at', 'TEXT'], ['approved_at', 'TEXT']] as [string, string][]) {
+        try {
+          await run(db, `ALTER TABLE cbt_sesi ADD COLUMN ${col} ${typ}`);
+          okCount++;
+        } catch (e: unknown) {
+          const m = String(e instanceof Error ? e.message : e).toLowerCase();
+          if (m.includes('duplicate column') || m.includes('already exists')) okCount++;
+          else errs.push(`${col}: ${m}`);
         }
       }
       return json(ok({ ok: okCount, errors: errs }, 'Setup CBT selesai'));
@@ -1635,7 +1885,8 @@ async function dispatch(c: Context, db: D1Database, action: string, method: stri
                   (SELECT COUNT(*) FROM cbt_soal WHERE ujian_id=u.id AND jenis=1) AS jmlPG,
                   (SELECT COUNT(*) FROM cbt_soal WHERE ujian_id=u.id AND jenis=5) AS jmlEssay,
                   (SELECT COUNT(DISTINCT nis) FROM cbt_sesi WHERE ujian_id=u.id) AS peserta,
-                  (SELECT AVG(skor) FROM cbt_sesi WHERE ujian_id=u.id AND selesai=1) AS rata
+                  (SELECT AVG(skor) FROM cbt_sesi WHERE ujian_id=u.id AND selesai=1) AS rata,
+                  (SELECT COUNT(*) FROM cbt_pelanggaran WHERE ujian_id=u.id AND status='pending') AS pelanggaran
            FROM cbt_ujian u WHERE u.nip=? ORDER BY u.id DESC`, [nip],
         );
         for (const r of rows) {
@@ -1704,6 +1955,7 @@ async function dispatch(c: Context, db: D1Database, action: string, method: stri
     // ===================== CBT: SISWA =====================
     case 'cbt-mulai': {
       if (method !== 'POST') return fail('Method not allowed', 405);
+      await ensureCbtColumns(db); // self-heal: pastikan kolom locked/violations ada
       const token = s(body.token).trim().toUpperCase();
       const nis = s(body.nis);
       const nama = s(body.nama);
@@ -1714,9 +1966,14 @@ async function dispatch(c: Context, db: D1Database, action: string, method: stri
       if (kelas && u.kelas && u.kelas !== kelas) return fail('Ujian ini untuk kelas ' + u.kelas);
       const uid = num(u.id);
       const dur = num(u.durasi);
-      const sesi = await one(db, 'SELECT id, deadline, selesai, skor FROM cbt_sesi WHERE ujian_id=? AND nis=? LIMIT 1', [uid, nis]);
+      const sesi = await one(db, 'SELECT id, deadline, selesai, skor, locked, violations FROM cbt_sesi WHERE ujian_id=? AND nis=? LIMIT 1', [uid, nis]);
       if (sesi && num(sesi.selesai) === 1) {
         return json(ok({ sudah: true, total: sesi.skor }));
+      }
+      // ✅ ANTI-MENCONTEK: sesi yang dikunci (pelanggaran) harus di-approve guru dulu.
+      // HTTP 200 — frontend mengenali r.locked dan menampilkan peringatan tanpa logout.
+      if (sesi && num(sesi.locked) === 1) {
+        return json(ok({ locked: true, violations: num(sesi.violations), examId: uid, sesiId: num(sesi.id) }, 'Sesi dikunci karena pelanggaran. Menunggu persetujuan guru.'));
       }
       let sid: number;
       let sisaDetik: number;
@@ -1736,7 +1993,16 @@ async function dispatch(c: Context, db: D1Database, action: string, method: stri
       const savedRows = await all(db, 'SELECT soal_id, jawaban FROM cbt_jawaban WHERE sesi_id=?', [sid]);
       const saved: Record<string, string> = {};
       for (const x of savedRows) saved[s(x.soal_id)] = s(x.jawaban);
-      return json(ok({ sesiId: sid, sisaDetik, judul: u.judul, mapel: u.mapel, ai: num(u.ai_aktif), soal, saved }));
+      // Frontend lama (code.gs) membentuk `_cbtSiswa.exam` dari r.exam dan memakai
+      // r.exam.id sebagai kunci localStorage + sesi. Sesi id asli dari server
+      // (sid) di-ekspos sebagai exam.sesiId agar cbtSubmit/finalize menyentuh sesi
+      // yang benar (exam id ≠ sesi id).
+      return json(ok({
+        sesiId: sid,
+        sisaDetikAwal: sisaDetik,
+        exam: { id: uid, sesiId: sid, judul: u.judul, mapel: u.mapel, kelas: u.kelas, durasi: dur, ai: num(u.ai_aktif), token },
+        soal, saved,
+      }));
     }
 
     case 'cbt-simpan-jawaban': {
@@ -1769,10 +2035,36 @@ async function dispatch(c: Context, db: D1Database, action: string, method: stri
 
     case 'cbt-kumpulkan': {
       if (method !== 'POST') return fail('Method not allowed', 405);
-      const sesiId = num(body.sesiId);
+      // Frontend lama memanggil cbtSubmit(examId, nis, jawabanArr). Server bisa
+      // menerima sesi id langsung (sesiId) ATAU exam id (ex) — bila exam id,
+      // cari sesi siswa yang masih berjalan lalu finalisasi.
+      const nis = s(body.nis);
+      let sesiId = num(body.sesiId);
+      if (!sesiId && nis && body.ex) {
+        const ex = await one(db, 'SELECT id FROM cbt_sesi WHERE ujian_id=? AND nis=? AND selesai=0 ORDER BY id DESC LIMIT 1', [num(body.ex), nis]);
+        if (ex) sesiId = num(ex.id);
+      }
       if (!sesiId) return fail('sesiId wajib');
+      // Simpan jawaban terakhir yang dikirim frontend (autosave bisa saja
+      // ketinggalan beberapa jawaban — mis. yang diisi saat detik terakhir).
+      const jwArr: Record<string, any>[] = Array.isArray(body.jawaban) ? body.jawaban : [];
+      for (const x of jwArr) {
+        const soalId = num(x.soalId);
+        if (!soalId) continue;
+        const jw = x.jawaban ?? '';
+        const ex = await one(db, 'SELECT id FROM cbt_jawaban WHERE sesi_id=? AND soal_id=?', [sesiId, soalId]);
+        if (ex) await run(db, 'UPDATE cbt_jawaban SET jawaban=? WHERE sesi_id=? AND soal_id=?', [jw, sesiId, soalId]);
+        else await run(db, 'INSERT INTO cbt_jawaban (sesi_id,soal_id,jawaban) VALUES (?,?,?)', [sesiId, soalId, jw]);
+      }
       const result = await finalizeSesi(db, sesiId, false);
-      return json(ok(result, 'Kumpulkan selesai'));
+      // Bentuk sesuai kontrak frontend lama (code.gs): nilai_pg, benar, salah, essayMenunggu.
+      return json(ok({
+        nilai_pg: result.skor,
+        benar: result.benar,
+        salah: Math.max(0, result.total - result.benar),
+        total_soal: result.total,
+        essayMenunggu: result.uraian > 0 ? 1 : 0,
+      }, 'Kumpulkan selesai'));
     }
 
     case 'cbt-cleanup-expired': {
@@ -1873,7 +2165,91 @@ async function dispatch(c: Context, db: D1Database, action: string, method: stri
       if (method !== 'GET') return fail('Method not allowed', 405);
       const nis = P('nis');
       if (!nis) return fail('nis wajib');
-      const rows = await all(db, 'SELECT u.judul, u.mapel, u.kelas, s.skor AS total, u.tanggal FROM cbt_sesi s JOIN cbt_ujian u ON u.id=s.ujian_id WHERE s.nis=? AND s.selesai=1 ORDER BY s.id DESC', [nis]);
+      const rows = await all(db, "SELECT COALESCE(u.judul,'') AS judul, COALESCE(u.mapel,'') AS mapel, COALESCE(u.kelas,'') AS kelas, s.skor AS total, COALESCE(u.tanggal,'') AS tanggal FROM cbt_sesi s JOIN cbt_ujian u ON u.id=s.ujian_id WHERE s.nis=? AND s.selesai=1 ORDER BY s.id DESC", [nis]);
+      return json(ok(rows));
+    }
+
+    // ===================== CBT: ANTI-MENCONTEK =====================
+    // Siswa melaporkan pelanggaran (buka tab/window lain, pindah jendela).
+    // Server mencatat log + mengunci sesi (locked=1) sampai di-approve guru.
+    case 'cbt-pelanggaran': {
+      if (method !== 'POST') return fail('Method not allowed', 405);
+      await ensureCbtColumns(db); // self-heal: pastikan kolom + tabel pelanggaran ada
+      const sesiId = num(body.sesiId);
+      const ujianId = num(body.ujianId);
+      const jenis = s(body.jenis) || 'tab';
+      const detail = s(body.detail) || '';
+      if (!sesiId) return fail('sesiId wajib');
+      const sesi = await one(db, 'SELECT id, ujian_id, nis, nama, locked FROM cbt_sesi WHERE id=?', [sesiId]);
+      if (!sesi) return fail('Sesi tidak ditemukan', 404);
+      const uid = num(sesi.ujian_id);
+      // Catat pelanggaran
+      await run(
+        db,
+        "INSERT INTO cbt_pelanggaran (sesi_id,ujian_id,nis,nama,jenis,detail,waktu,status) VALUES (?,?,?,?,?,?,?,?)",
+        [sesiId, uid, s(sesi.nis), s(sesi.nama), jenis, detail, nowWIB(), 'pending'],
+      );
+      // Kunci sesi + naikkan hitungan
+      await run(db, "UPDATE cbt_sesi SET locked=1, locked_at=?, violations=COALESCE(violations,0)+1 WHERE id=? AND selesai=0", [nowWIB(), sesiId]);
+      return json(ok({ violations: true, locked: true, ujianId: uid }, 'Pelanggaran tercatat. Sesi dikunci, menunggu persetujuan guru.'));
+    }
+
+    // Guru: daftar pelanggaran real-time per ujian (belum di-approve dulu).
+    case 'cbt-pelanggaran-list': {
+      if (method !== 'GET') return fail('Method not allowed', 405);
+      await ensureCbtColumns(db); // self-heal: pastikan kolom + tabel pelanggaran ada
+      const ujianId = P('ujianId');
+      const status = P('status') || 'pending';
+      if (!ujianId) return fail('ujianId wajib');
+      // JOIN sekaligus ambil info sesi (locked, violations, selesai) —
+      // satu query, bukan N+1 per baris (hemat D1 reads saat polling).
+      const rows = await all(
+        db,
+        `SELECT p.id, p.sesi_id AS sesiId, p.nis, p.nama, p.jenis, p.detail, p.waktu, p.status,
+                COALESCE(s.locked,0) AS locked, COALESCE(s.violations,0) AS violations, COALESCE(s.selesai,0) AS selesai
+         FROM cbt_pelanggaran p LEFT JOIN cbt_sesi s ON s.id=p.sesi_id
+         WHERE p.ujian_id=? AND p.status=? ORDER BY p.id DESC LIMIT 100`,
+        [ujianId, status],
+      );
+      return json(ok(rows));
+    }
+
+    // Guru: setujui pelanggaran → buka kunci sesi (siswa boleh lanjut ujian).
+    case 'cbt-pelanggaran-approve': {
+      if (method !== 'POST') return fail('Method not allowed', 405);
+      await ensureCbtColumns(db); // self-heal: pastikan kolom + tabel pelanggaran ada
+      const pelanggaranId = num(body.id);
+      const sesiId = num(body.sesiId);
+      if (!pelanggaranId && !sesiId) return fail('id atau sesiId wajib');
+      if (pelanggaranId) {
+        await run(db, "UPDATE cbt_pelanggaran SET status='approved' WHERE id=?", [pelanggaranId]);
+      }
+      // Approve semua pelanggaran pending utk sesi ini, lalu buka kunci.
+      if (sesiId) {
+        await run(db, "UPDATE cbt_pelanggaran SET status='approved' WHERE sesi_id=? AND status='pending'", [sesiId]);
+      }
+      // Cari sesi_id dari pelanggaran bila tidak dikirim.
+      let targetSesi = sesiId;
+      if (!targetSesi && pelanggaranId) {
+        const p = await one(db, 'SELECT sesi_id FROM cbt_pelanggaran WHERE id=?', [pelanggaranId]);
+        if (p) targetSesi = num(p.sesi_id);
+      }
+      if (!targetSesi) return fail('sesiId tidak ditemukan', 404);
+      await run(db, "UPDATE cbt_sesi SET locked=0, approved_at=? WHERE id=? AND selesai=0", [nowWIB(), targetSesi]);
+      return json(ok({ sesiId: targetSesi }, 'Sesi dibuka kembali. Siswa boleh lanjut ujian.'));
+    }
+
+    // Guru: daftar sesi yang masih berlangsung/dikunci (opsional, utk monitor).
+    case 'cbt-monitor-sesi': {
+      if (method !== 'GET') return fail('Method not allowed', 405);
+      await ensureCbtColumns(db); // self-heal: pastikan kolom locked/violations ada
+      const ujianId = P('ujianId');
+      if (!ujianId) return fail('ujianId wajib');
+      const rows = await all(
+        db,
+        'SELECT id AS sesiId, nis, nama, mulai, deadline, selesai, COALESCE(violations,0) AS violations, locked FROM cbt_sesi WHERE ujian_id=? ORDER BY id DESC LIMIT 200',
+        [ujianId],
+      );
       return json(ok(rows));
     }
 

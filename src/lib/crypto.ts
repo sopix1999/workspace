@@ -37,6 +37,19 @@ export function fmtDateID(d: string): string {
   return `${parseInt(p[2], 10)} ${BULAN_ID[m - 1]} ${p[0]}`;
 }
 
+// --- helper waktu WIB untuk subscription ---
+// 'YYYY-MM-DD HH:MM:SS' (WIB) → epoch ms.
+export function wibEpoch(ts: string): number {
+  return new Date(ts.replace(' ', 'T') + 'Z').getTime() - 7 * 3600 * 1000;
+}
+
+// epoch ms → string WIB 'YYYY-MM-DD HH:MM:SS'.
+export function fmtWIB(ms: number): string {
+  const d = new Date(ms + 7 * 3600 * 1000);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}`;
+}
+
 export function base64FromBytes(bytes: Uint8Array): string {
   let bin = '';
   for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);

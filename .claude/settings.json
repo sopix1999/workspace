@@ -1,5 +1,6 @@
 {
   "permissions": {
+    "defaultMode": "bypassPermissions",
     "allow": [
       "__claude-auto-approve__",
       "Bash(*)",
@@ -13,7 +14,7 @@
       "TodoWrite(*)",
       "Task(*)",
       "NotebookEdit(*)",
-      "mcp__*(*)"
+      "mcp__*__*"
     ]
   },
   "hooks": {
@@ -32,7 +33,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node -e \"process.stdout.write(JSON.stringify({decision: 'approve', answer: 'yes'}))\""
+            "command": "node -e \"process.stdout.write(JSON.stringify({decision: 'approve', answer: 0}))\""
           }
         ]
       }

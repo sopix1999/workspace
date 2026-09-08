@@ -8,6 +8,7 @@
 import type { Context } from 'hono';
 import type { D1Database } from '@cloudflare/workers-types';
 import { all, one, run, num, s } from './lib/db';
+import { checkUserAccess } from './lib/subscription';
 import type { GeminiCtx } from './lib/gemini';
 import { aiGuru, aiTextToSoal, aiBuatSoalBank, generateSummary, parseSearchQuery, extractDataEntry, aiCallGrade, extractJson } from './lib/gemini';
 import {
@@ -66,9 +67,14 @@ type FnSpec = {
 const FUNCS: Record<string, FnSpec> = {
   // ===== AUTH =====
   validateLogin: { method: 'POST', action: 'login', args: ['username', 'password'], body: ['username', 'password'] },
+  register: { method: 'POST', action: 'register', args: ['username', 'password', 'namaLengkap', 'role', 'kelas'], body: ['username', 'password', 'namaLengkap', 'role', 'kelas'] },
   logActivity: { method: 'POST', action: 'log-aktivitas', args: ['username', 'role', 'aksi', 'detail'], body: ['username', 'role', 'aksi', 'detail'] },
   getTAInfo: { method: 'GET', action: 'settings', args: [] },
   setTA: { method: 'POST', action: 'settings', args: ['ta', 'semester'], body: ['ta', 'semester'] },
+
+  // ===== SUBSCRIPTION =====
+  getMyPlan: { method: 'GET', action: 'plan', args: [] },
+  setUserPlan: { method: 'PUT', action: 'plan', args: ['username', 'plan_type', 'duration_days', 'trial_days'], body: ['username', 'plan_type', 'duration_days', 'trial_days'] },
 
   // ===== DASHBOARD =====
   getDashboardData: { method: 'GET', action: 'dashboard', args: ['kelas', 'role', 'nip'], q: ['kelas', 'role', 'nip'] },
@@ -80,6 +86,15 @@ const FUNCS: Record<string, FnSpec> = {
   getGuruInfo: { method: 'GET', action: 'guru-info', args: ['nip'], q: ['nip'] },
   getMapelGuruDiKelas: { method: 'GET', action: 'mapel-guru-kelas', args: ['nip', 'kelas'], q: ['nip', 'kelas'] },
   addKelasDiampu: { method: 'POST', action: 'guru-add-kelas', args: ['nip', 'kelas'], body: ['nip', 'kelas'] },
+  addMapelGuru: { method: 'POST', action: 'guru-add-mapel', args: ['nip', 'mapel'], body: ['nip', 'mapel'] },
+  getMasterKelas: { method: 'GET', action: 'master-kelas', args: [] },
+  getMasterMapel: { method: 'GET', action: 'master-mapel', args: [] },
+  addMasterKelas: { method: 'POST', action: 'master-kelas', args: ['kelas'], body: ['kelas'] },
+  addMasterMapel: { method: 'POST', action: 'master-mapel', args: ['mapel'], body: ['mapel'] },
+  updateMasterKelas: { method: 'PUT', action: 'master-kelas', args: ['old', 'kelas'], body: ['old', 'kelas'] },
+  updateMasterMapel: { method: 'PUT', action: 'master-mapel', args: ['old', 'mapel'], body: ['old', 'mapel'] },
+  deleteMasterKelas: { method: 'DELETE', action: 'master-kelas', args: ['kelas'], body: ['kelas'] },
+  deleteMasterMapel: { method: 'DELETE', action: 'master-mapel', args: ['mapel'], body: ['mapel'] },
 
   // ===== SISWA =====
   getSiswaList: { method: 'GET', action: 'siswa', args: ['kelas'], q: ['kelas'] },
@@ -234,9 +249,15 @@ const FUNCS: Record<string, FnSpec> = {
   nilaiEssayCbt: { method: 'PUT', action: 'cbt-essay', args: ['id', 'nilai'], body: ['id', 'nilai'] },
   cbtStart: { method: 'POST', action: 'cbt-mulai', args: ['token', 'nis', 'nama', 'kelas'], body: ['token', 'nis', 'nama', 'kelas'] },
   cbtAutosave: { method: 'POST', action: 'cbt-simpan-jawaban', args: ['sesiId', 'nis', 'soalId', 'jawaban'], body: (a: any[]) => ({ sesiId: a[0], soalId: a[2], jawaban: a[3] }) },
-  cbtSubmit: { method: 'POST', action: 'cbt-kumpulkan', args: ['sesiId', 'nis', 'jawabanArr'], body: (a: any[]) => ({ sesiId: a[0], jawaban: a[2] }) },
+  cbtSubmit: { method: 'POST', action: 'cbt-kumpulkan', args: ['sesiId', 'nis', 'jawabanArr'], body: (a: any[]) => ({ sesiId: a[0], nis: a[1], ex: a[0], jawaban: a[2] }) },
   getCbtRiwayatSiswa: { method: 'GET', action: 'cbt-riwayat-siswa', args: ['nis'], q: ['nis'] },
   cbtCleanupExpired: { method: 'POST', action: 'cbt-cleanup-expired', args: [] },
+
+  // ===== CBT: ANTI-MENCONTEK =====
+  cbtLaporPelanggaran: { method: 'POST', action: 'cbt-pelanggaran', args: ['sesiId', 'ujianId', 'jenis', 'detail'], body: ['sesiId', 'ujianId', 'jenis', 'detail'] },
+  getCbtPelanggaran: { method: 'GET', action: 'cbt-pelanggaran-list', args: ['ujianId', 'status'], q: ['ujianId', 'status'] },
+  approveCbtPelanggaran: { method: 'POST', action: 'cbt-pelanggaran-approve', args: ['id', 'sesiId'], body: ['id', 'sesiId'] },
+  getCbtMonitorSesi: { method: 'GET', action: 'cbt-monitor-sesi', args: ['ujianId'], q: ['ujianId'] },
 
   // ===== REKAP / LAPORAN (data) =====
   getLaporanAdminData: { method: 'GET', action: 'laporan-admin', args: ['nip', 'kelas', 'mapel', 'start', 'end'], q: ['nip', 'kelas', 'mapel', 'start', 'end'] },
@@ -292,6 +313,18 @@ export async function handleBridge(c: Context): Promise<Response> {
   // ---- read-only Gemini key (dibaca dari env secret, bukan PropertiesService) ----
   if (fn === 'getGeminiKey') {
     return json({ success: true, data: (c.env.GEMINI_KEY || ''), message: 'OK' });
+  }
+
+  // ---- Gate subscription: semua fn non-public butuh JWT valid;
+  //      guru (Walikelas/Guru) wajib plan aktif. ----
+  const PUBLIC_FNS = new Set([
+    'validateLogin', 'register', 'getGeminiKey', 'setGeminiKey', 'getTAInfo',
+    'test', 'runSetup', 'runSetupGuruV2', 'runSetupCbt', 'runSetupBankSoal',
+    'logActivity',
+  ]);
+  if (!PUBLIC_FNS.has(fn)) {
+    const gate = await checkUserAccess(c, db);
+    if (!gate.ok) return json(gate.body, gate.status);
   }
 
   // ---- AI endpoints ----
@@ -361,6 +394,22 @@ export async function handleBridge(c: Context): Promise<Response> {
   const r = await callAction(c, spec.method, spec.action, params, payload);
   // GAS `_d(r, fb)` semantics: kembalikan data bila success, null bila gagal
   if (spec.method === 'GET') return json(r.success ? r.data : null);
+  // POST/PUT/DELETE: frontend lama mengharapkan data MENTAH (polos), bukan
+  // bungkus {success,data}. Mis. saveExam() membaca r.token, cbtSubmit() membaca
+  // r.nilai_pg/r.benar/r.salah — semuanya flat. Bungkus hanya untuk pesan error.
+  if (!r.success) return json({ success: false, message: r.message || 'Gagal' });
+  // validateLogin: GAS lama mengembalikan {success, user, roles, message};
+  // frontend membaca r.user / r.user.role / currentUser.roles. REST login
+  // meletakkan user di `data`, jadi reshape ke bentuk GAS di sini.
+  if (fn === 'validateLogin') {
+    if (!r.success) {
+      // Teruskan kode langganan (TRIAL_EXPIRED dll) + status HTTP agar
+      // frontend menampilkan pesan "berlangganan" bukan sekadar gagal login.
+      return json({ success: false, message: r.message || 'Login gagal', code: r.code }, (r as any)._status || 400);
+    }
+    const data = (r.data as Record<string, any>) || {};
+    return json({ success: true, message: r.message, user: data, roles: data.roles });
+  }
   return json({ success: r.success, message: r.message || (r.success ? 'OK' : 'Gagal'), data: r.data });
 }
 

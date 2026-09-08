@@ -394,20 +394,17 @@ function call(fn){var args=[].slice.call(arguments,1);var h={'Content-Type':'app
 // ✅ FIX ANTI-LAG (lazy-load): muat library berat (XLSX/Chart) HANYA saat dibutuhkan,
 // bukan saat app dibuka. `readyCheck` = cara mengecek library sudah tersedia global.
 var _libLoad={};
-function ensureLib(name, url, readyCheck, cb, fb){
+function ensureLib(name, url, readyCheck, cb){
   if(_libLoad[name]==='loaded'){ cb(); return; }
-  if(_libLoad[name]==='error'){ if(fb)fb(); else showToast('Gagal memuat '+(name||'library')+'.','error'); return; }
-  if(_libLoad[name]==='loading'){ var t=0; var w=setInterval(function(){ t+=100; if(window[readyCheck]){ clearInterval(w); _libLoad[name]='loaded'; cb(); } else if(t>15000){ clearInterval(w); showToast('Gagal memuat '+(name||'library')+'. Periksa koneksi.','error'); if(fb)fb(); } },100); return; }
+  if(_libLoad[name]==='loading'){ var t=0; var w=setInterval(function(){ t+=100; if(window[readyCheck]){ clearInterval(w); _libLoad[name]='loaded'; cb(); } else if(t>15000){ clearInterval(w); showToast('Gagal memuat '+(name||'library')+'. Periksa koneksi.','error'); } },100); return; }
   _libLoad[name]='loading';
   var s=document.createElement('script'); s.src=url; s.async=true;
   s.onload=function(){ _libLoad[name]='loaded'; cb(); };
-  s.onerror=function(){ _libLoad[name]='error'; showToast('Gagal memuat '+(name||'library')+'.','error'); if(fb)fb(); };
+  s.onerror=function(){ _libLoad[name]='error'; showToast('Gagal memuat '+(name||'library')+'.','error'); };
   document.head.appendChild(s);
 }
 function ensureXlsx(cb){ ensureLib('xlsx','https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js','XLSX',cb); }
 function ensureChart(cb){ ensureLib('chart','https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js','Chart',cb); }
-// html2pdf.js — konversi HTML server → PDF di browser (download otomatis).
-function ensurePdf(cb, fb){ ensureLib('pdf','https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js','html2pdf',cb,fb); }
 function showLoading(t){$('loadingText').innerHTML=(t||'Memuat')+'<span class="ldot">.</span><span class="ldot">.</span><span class="ldot">.</span>';_hintIdx=0;$('loadingHint').textContent=_loadingHints[0];var e=$('loadingOverlay');e.classList.remove('hidden');e.classList.add('flex');_loadingShownAt=Date.now();if(_hintTimer)clearInterval(_hintTimer);_hintTimer=setInterval(function(){_hintIdx=(_hintIdx+1)%_loadingHints.length;$('loadingHint').textContent=_loadingHints[_hintIdx];},2500);}
 function hideLoading(){var e=$('loadingOverlay');e.classList.add('hidden');e.classList.remove('flex');_loadingShownAt=null;if(_hintTimer){clearInterval(_hintTimer);_hintTimer=null;}}
 function forceHideLoading(){hideLoading();showToast('Loading ditutup paksa.','info');}
@@ -1567,43 +1564,7 @@ if(cakup==='kelas'){call('generateRekapanKelasPDF',getActiveKelas(),range.start,
 else{var nis=$('rekapSiswa').value;if(!nis){showToast('Pilih siswa!','error');$('btnGeneratePDF').disabled=false;return;}call('generateRekapanPDF',getActiveKelas(),nis,range.start,range.end,range.label,{namaLengkap:currentUser.namaLengkap}).then(function(r){hideLoading();$('btnGeneratePDF').disabled=false;dlPdf(r);}).catch(function(e){hideLoading();$('btnGeneratePDF').disabled=false;showToast(e,'error');});}}
 /* ✅ MIGRASI WORKERS: server mengembalikan {base64, filename, mimeType}. Bila mimeType
    text/html, buka di tab baru (browser dapat mencetak/simpan sebagai PDF). */
-/* dlPdf — unduh hasil generate PDF.
-   Server mengirim HTML (mimeType text/html) → konversi ke .pdf di browser
-   (html2pdf.js) lalu download otomatis; bila library gagal, fallback buka
-   tab baru (Ctrl+P → Save as PDF). Server yang mengirim PDF biner tetap
-   di-download langsung. */
-function dlPdf(r){if(!r||!r.success){showToast((r&&r.message)||'Gagal','error');return;}var mime=r.mimeType||'application/pdf';if(mime.indexOf('html')>-1){var fname=(r.filename||'dokumen').replace(/\.html$/i,'')+'.pdf';dlHtmlAsPdf(r.base64,fname);return;}var bc=atob(r.base64),bn=new Array(bc.length);for(var i=0;i<bc.length;i++)bn[i]=bc.charCodeAt(i);var blob=new Blob([new Uint8Array(bn)],{type:mime});var url=URL.createObjectURL(blob);var a=document.createElement('a');a.href=url;a.download=r.filename;a.click();URL.revokeObjectURL(url);showToast('Dokumen didownload','success');closeModal('modalRekap');}
-function dlHtmlAsPdf(base64,fname){
-  var html; try{ html=decodeURIComponent(escape(atob(base64))); }catch(e){ try{ html=atob(base64); }catch(e2){ showToast('Data dokumen rusak.','error'); return; } }
-  // PENTING: html2canvas SANGAT sensitif — elemen yang disisipkan ke body
-  // aplikasi sering ter-capture KOSONG karena CSS global (filter/transform/
-  // flex pada body) ikut mempengaruhi clone. Solusi andal: render dokumen
-  // utuh di IFRAME tersembunyi — dokumen HTML dipertahankan 1:1, terisolasi
-  // dari CSS aplikasi, dan html2canvas menangkap body iframe dengan benar.
-  var f=document.createElement('iframe');
-  f.style.cssText='position:fixed;top:0;left:0;width:900px;height:1200px;border:0;z-index:999999;pointer-events:none;background:#fff;';
-  f.setAttribute('aria-hidden','true');
-  document.body.appendChild(f);
-  showToast('Mengonversi ke PDF…','info');
-  function ok(){
-    var doc=null;
-    try{ doc=f.contentDocument||f.contentWindow.document; }catch(e){}
-    if(!doc){ try{f.remove();}catch(e2){} fb(); return; }
-    try{ doc.open(); doc.write(html); doc.close(); }catch(e){ try{f.remove();}catch(e2){} fb(); return; }
-    // Beri waktu render/font sebelum capture
-    setTimeout(function(){
-      var el=doc.body||doc.documentElement;
-      var opt={margin:[10,10,10,10],filename:fname,image:{type:'jpeg',quality:0.98},html2canvas:{scale:2,useCORS:true,logging:false,backgroundColor:'#ffffff',windowWidth:900,width:900},jsPDF:{unit:'mm',format:'a4',orientation:'portrait'}};
-      html2pdf().set(opt).from(el).save().then(function(){try{f.remove();}catch(e){}closeModal('modalRekap');}).catch(function(e){try{f.remove();}catch(e2){}showToast('Gagal membuat PDF: '+e,'error');});
-    },300);
-  }
-  function fb(){
-    try{f.remove();}catch(e){}
-    var w=window.open('','_blank'); if(w){w.document.write(html);w.document.title=(fname||'').replace(/\.pdf$/i,'');w.focus();}
-    showToast('Mode cetak: Ctrl+P / Print → Save as PDF.','info'); closeModal('modalRekap');
-  }
-  ensurePdf(ok,fb);
-}
+function dlPdf(r){if(!r||!r.success){showToast((r&&r.message)||'Gagal','error');return;}var mime=r.mimeType||'application/pdf';if(mime.indexOf('html')>-1){var dataUrl='data:text/html;base64,'+r.base64;var w=window.open('','_blank');if(w){w.document.write(decodeURIComponent(escape(atob(r.base64))));w.document.title=r.filename;w.focus();}showToast('Dokumen dibuka. Gunakan Ctrl+P / Print → Save as PDF.','info');closeModal('modalRekap');return;}var bc=atob(r.base64),bn=new Array(bc.length);for(var i=0;i<bc.length;i++)bn[i]=bc.charCodeAt(i);var blob=new Blob([new Uint8Array(bn)],{type:mime});var url=URL.createObjectURL(blob);var a=document.createElement('a');a.href=url;a.download=r.filename;a.click();URL.revokeObjectURL(url);showToast('Dokumen didownload','success');closeModal('modalRekap');}
 var LOADERS={dashboard:loadDashboard,siswa:loadSiswa,cbt:renderCbtSiswa,kehadiran:loadKehadiran,tatatertib:loadTataTertib,kas:loadKas,struktur:loadStruktur,inventaris:loadInventaris,pengumuman:loadPengumuman,jadwal:loadJadwal,piket:loadPiket,bimbingan:loadBimbingan,kunjungan:loadKunjungan,jurnalMengajar:loadJadwalMengajar,presensiJurnal:loadJurnalMengajar,nilai:loadNilaiPage,users:loadUsers,logs:loadLogs,settings:loadSettings,katalog:loadKatalog,bahan:loadBahan,peminjaman:loadPeminjaman,kerusakan:loadKerusakan,guru:function(){loadGuruPage(_curSub);},aifeatures:renderAIFeatures};
 /* ===================== BANK SOAL (GURU) ===================== */
 function renderGuruBankSoal(){
@@ -2189,18 +2150,8 @@ function cbtAutoResume(){
   showToast('🔄 Mendeteksi ujian yang sedang berjalan, melanjutkan…','info');
   call('cbtStart',meta.token,currentUser.username,currentUser.namaLengkap,currentUser.kelas).then(function(r){
     if(!r) return;
-    // ✅ Tampilkan pesan error asli dari server (token salah/ujian ditutup/dll)
-    //    — jangan jatuh ke cabang "data ujian tidak lengkap".
-    if(r.success===false){ showToast(escHtml(r.message||'Gagal melanjutkan ujian.'),'error'); return; }
     if(r.sudah){ showToast('✅ Kamu sudah mengerjakan ulangan ini.','success'); try{ localStorage.removeItem('cbt_sesi_'+meta.sesiId); }catch(e){} return; }
-    if(!r.exam){
-      // ✅ Kompatibilitas server lama (tanpa objek `exam`): bangun dari field top-level.
-      if(r.judul!=null || r.mapel!=null || r.durasi!=null || r.sesiId!=null){
-        r.exam={id:r.sesiId!=null?Number(r.sesiId):null, judul:r.judul||'Ulangan', mapel:r.mapel||'Ulangan', durasi:(r.durasi!=null)?Number(r.durasi):Math.floor((Number(r.sisaDetikAwal)||0)/60), ai:r.ai?1:0, token:meta.token};
-      }else{
-        showToast('Terjadi kesalahan: data ujian tidak lengkap dari server.','error'); return;
-      }
-    }
+    if(!r.exam){ showToast('Terjadi kesalahan: data ujian tidak lengkap dari server.','error'); return; }
     // ✅ ANTI-MENCONTEK: sesi terkunci → tampilkan layar tunggu persetujuan guru
     if(r.locked){
       var lockEx={id:r.examId,judul:'',mapel:'',sesiId:r.sesiId,token:meta.token};
@@ -2269,7 +2220,6 @@ function cbtTampilPelanggaran(violations,detail){
     var sesiId=(_cbtSiswa.exam.sesiId!=null)?_cbtSiswa.exam.sesiId:_cbtSiswa.exam.id;
     call('cbtStart',(_cbtSiswa.exam.token||_cbtToken),currentUser.username,currentUser.namaLengkap,currentUser.kelas).then(function(r){
       if(!r)return;
-      if(r.success===false)return; // error sementara — polling tetap berlanjut
       if(r.locked){_cbtSiswa.locked=true;return;}
       clearInterval(_cbtLockPoll);_cbtLockPoll=null;
       _cbtSiswa.locked=false;
@@ -2284,15 +2234,7 @@ function cbtMasukResume(r){
     if(r&&r.sudah){showToast('Ulangan sudah dikumpulkan.','info');cbtTutup();}
     return;
   }
-  if(r.success===false){ showToast(escHtml(r.message||'Gagal melanjutkan ujian.'),'error'); return; }
-  if(!r.exam){
-    // ✅ Kompatibilitas server lama (tanpa objek `exam`): bangun dari field top-level.
-    if(r.judul!=null || r.mapel!=null || r.durasi!=null || r.sesiId!=null){
-      r.exam={id:r.sesiId!=null?Number(r.sesiId):null, judul:r.judul||'Ulangan', mapel:r.mapel||'Ulangan', durasi:(r.durasi!=null)?Number(r.durasi):Math.floor((Number(r.sisaDetikAwal)||0)/60), ai:r.ai?1:0, token:_cbtToken||''};
-    }else{
-      showToast('Terjadi kesalahan: data ujian tidak lengkap dari server.','error'); return;
-    }
-  }
+  if(!r.exam){ showToast('Terjadi kesalahan: data ujian tidak lengkap dari server.','error'); return; }
   _cbtSiswa.exam=r.exam;
   if(_cbtSiswa.exam){_cbtSiswa.exam.token=_cbtToken||_cbtSiswa.exam.token;}
   if(r.sesiId!=null&&_cbtSiswa.exam)_cbtSiswa.exam.sesiId=Number(r.sesiId);
@@ -2329,12 +2271,6 @@ function cbtMasuk(){
   msg.innerHTML='<p class="text-slate-400 text-sm italic">Memeriksa kode…</p>';
   call('cbtStart',token,currentUser.username,currentUser.namaLengkap,currentUser.kelas).then(function(r){
     if(!r){msg.innerHTML='<p class="text-red-600 text-sm">Gagal memeriksa kode.</p>';return;}
-    // ✅ Tampilkan pesan error asli dari server (mis. "Token tidak valid atau ujian
-    //    sudah ditutup", "Ujian ini untuk kelas X") — bukan pesan generik.
-    if(r.success===false){
-      msg.innerHTML='<p class="text-red-600 text-sm"><i class="fas fa-circle-exclamation mr-1"></i>'+escHtml(r.message||'Gagal memeriksa kode.')+'</p>';
-      return;
-    }
     if(r.sudah){
       msg.innerHTML='<div class="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-center"><p class="text-sm text-emerald-700 font-semibold">Kamu sudah mengerjakan ulangan ini.</p><p class="stat-num text-3xl text-emerald-700 mt-1">'+(r.total!=null?r.total:'-')+'</p><p class="text-xs text-emerald-600">Nilai akhir</p></div>';
       return;
@@ -2352,15 +2288,9 @@ function cbtMasuk(){
       return;
     }
     _cbtToken=token;                                // simpan token untuk resume setelah refresh
-    // ✅ Kompatibilitas server lama (tanpa objek `exam` — mapel/judul di top-level):
-    //    bangun objek exam dari field lama agar tidak crash & tetap bisa mengerjakan.
     if(!r.exam){
-      if(r.judul!=null || r.mapel!=null || r.durasi!=null || r.sesiId!=null){
-        r.exam={id:r.sesiId!=null?Number(r.sesiId):null, judul:r.judul||'Ulangan', mapel:r.mapel||'Ulangan', durasi:(r.durasi!=null)?Number(r.durasi):Math.floor((Number(r.sisaDetikAwal)||0)/60), ai:r.ai?1:0, token:token};
-      }else{
-        msg.innerHTML='<p class="text-red-600 text-sm">Terjadi kesalahan: data ujian tidak lengkap dari server.</p>';
-        return;
-      }
+      msg.innerHTML='<p class="text-red-600 text-sm">Terjadi kesalahan: data ujian tidak lengkap dari server.</p>';
+      return;
     }
     _cbtSiswa.exam=r.exam;
     if(_cbtSiswa.exam) _cbtSiswa.exam.token=token;
@@ -2730,14 +2660,16 @@ function cbtKirim(){
   // ✅ FIX ANTI-LAG: batalkan semua timer debounce essay yang masih tertunda
   // (jawaban akhir sudah masuk ke arr lewat _cbtSiswa.jawaban, tidak hilang)
   try { for(var k in _cbtEsaiDeb){ if(_cbtEsaiDeb[k]){ clearTimeout(_cbtEsaiDeb[k]); delete _cbtEsaiDeb[k]; } } } catch(e){}
-  var arr=_cbtSiswa.soal.map(function(q){return{soalId:q.id,jawaban:_cbtSiswa.jawaban[q.id]||''};});
+  var arr=_cbtSiswa.soal.map(function(q){var qid=(q&&q.id!=null)?q.id:'';return{soalId:qid,jawaban:_cbtSiswa.jawaban[qid]||''};});
+  var exId = (_cbtSiswa.exam && _cbtSiswa.exam.id != null) ? _cbtSiswa.exam.id : null;
   $('cbt_soalBox').innerHTML='<div class="text-center py-12"><div class="w-12 h-12 border-4 border-brand-200 border-t-brand-600 rounded-full animate-spin mx-auto mb-3"></div><p class="text-slate-500 text-sm">Mengumpulkan & mengoreksi jawaban…</p></div>';
-  call('cbtSubmit',(_cbtSiswa.exam&&_cbtSiswa.exam.sesiId!=null)?_cbtSiswa.exam.sesiId:_cbtSiswa.exam.id,currentUser.username,arr).then(function(r){
+  if (exId == null) { cbtTampilHasil({}); return; }
+  call('cbtSubmit',(_cbtSiswa.exam&&_cbtSiswa.exam.sesiId!=null)?_cbtSiswa.exam.sesiId:exId,currentUser.username,arr).then(function(r){
     r=r||{};
     // ✅ Jika ujian mengaktifkan AI dan ada soal essay → nilai essay otomatis oleh AI
     if(_cbtSiswa.exam && _cbtSiswa.exam.ai && _cbtSiswa.soal.some(function(q){return q.jenis==='Essay';})){
       $('cbt_soalBox').innerHTML='<div class="text-center py-12"><div class="w-12 h-12 border-4 border-violet-200 border-t-violet-600 rounded-full animate-spin mx-auto mb-3"></div><p class="text-slate-500 text-sm">AI sedang mengoreksi essay…</p><p class="text-xs text-slate-400 mt-1">Jangan tutup halaman ini</p></div>';
-      call('autoNilaiEssayCbt',_cbtSiswa.exam.id).then(function(aiR){
+      call('autoNilaiEssayCbt',exId).then(function(aiR){
         if(aiR && aiR.success && aiR.dinilai>0){
           r.essayMenunggu=0;
           r.nilaiEssay=aiR.rataEssay;   // set agar muncul di hasil bila tersedia
@@ -2792,7 +2724,6 @@ function cbtLoadRiwayat(){
     if(!rows.length){box.innerHTML='';return;}
     box.innerHTML='<div class="bg-white rounded-2xl shadow-sm border p-5"><h4 class="font-bold text-sm mb-3"><i class="fas fa-history text-brand-600 mr-2"></i>Riwayat Ulangan</h4><div class="space-y-2">'+
     rows.map(function(r){
-      r=r||{};
       var cls=r.total==null?'text-slate-400':(r.total>=75?'text-emerald-600':(r.total>=60?'text-amber-600':'text-red-600'));
       return '<div class="flex items-center justify-between border rounded-xl px-4 py-3"><div><p class="font-semibold text-sm text-slate-800">'+escHtml(r.judul)+'</p><p class="text-xs text-slate-400">'+escHtml(r.mapel)+' • '+escHtml(r.kelas)+'</p></div><span class="stat-num text-xl '+cls+'">'+(r.total!=null?r.total:'-')+'</span></div>';
     }).join('')+'</div></div>';
